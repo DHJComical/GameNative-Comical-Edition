@@ -567,6 +567,7 @@ fun ContainerStorageManagerContent(
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = stringResource(R.string.close),
+                        tint = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -720,6 +721,7 @@ private fun SteamLibrariesSection(state: ContainerStorageManagerUiState) {
             Text(
                 text = stringResource(R.string.steam_libraries_title),
                 style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
@@ -746,6 +748,7 @@ private fun SteamLibrariesSection(state: ContainerStorageManagerUiState) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
                 border = BorderStroke(
                     1.dp,
                     if (library.isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
@@ -771,6 +774,7 @@ private fun SteamLibrariesSection(state: ContainerStorageManagerUiState) {
                                 else -> stringResource(R.string.steam_library_custom)
                             },
                             style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             text = library.installPath,
