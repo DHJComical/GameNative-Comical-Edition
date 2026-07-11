@@ -88,7 +88,6 @@ import app.gamenative.ui.model.MainViewModel
 import app.gamenative.ui.screen.HomeScreen
 import app.gamenative.ui.screen.PluviaScreen
 import app.gamenative.ui.screen.login.UserLoginScreen
-import app.gamenative.ui.screen.settings.SettingsScreen
 import app.gamenative.ui.screen.xserver.XServerScreen
 import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.SnackbarManager
@@ -1447,6 +1446,10 @@ fun PluviaMain(
                                 else PluviaScreen.Home.route
                             )
                         },
+                        appTheme = state.appTheme,
+                        paletteStyle = state.paletteStyle,
+                        onAppTheme = viewModel::setTheme,
+                        onPaletteStyle = viewModel::setPalette,
                         isOffline = isOffline,
                     )
                 }
@@ -1514,16 +1517,6 @@ fun PluviaMain(
                     )
                 }
 
-                /** Settings **/
-                composable(route = PluviaScreen.Settings.route) {
-                    SettingsScreen(
-                        appTheme = state.appTheme,
-                        paletteStyle = state.paletteStyle,
-                        onAppTheme = viewModel::setTheme,
-                        onPaletteStyle = viewModel::setPalette,
-                        onBack = { navController.navigateUp() },
-                    )
-                }
             }
 
             SnackbarHost(

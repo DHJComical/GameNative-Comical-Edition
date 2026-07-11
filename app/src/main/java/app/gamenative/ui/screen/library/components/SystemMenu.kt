@@ -90,8 +90,12 @@ import app.gamenative.ui.util.adaptivePanelWidth
 import app.gamenative.ui.util.shouldShowGamepadUI
 import app.gamenative.utils.getAvatarURL
 import `in`.dragonbra.javasteam.enums.EPersonaState
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
+
+private const val MENU_EXIT_DURATION_MS = 180
 
 /**
  * A single menu item in the System Menu
@@ -269,6 +273,19 @@ fun SystemMenu(
     var selectedStatus by remember(persona) { mutableStateOf(persona?.state ?: EPersonaState.Online) }
     var showSupporters by remember { mutableStateOf(false) }
     var showStatusPicker by remember { mutableStateOf(false) }
+    var isLeavingMenu by remember { mutableStateOf(false) }
+
+    val dismissThen: (() -> Unit) -> Unit = { action ->
+        if (!isLeavingMenu) {
+            isLeavingMenu = true
+            onDismiss()
+            scope.launch {
+                delay(MENU_EXIT_DURATION_MS.toLong().milliseconds)
+                action()
+                isLeavingMenu = false
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         persona = SteamService.instance?.localPersona?.value
@@ -351,10 +368,7 @@ fun SystemMenu(
             ),
             exit = slideOutHorizontally(
                 targetOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
+                animationSpec = tween(MENU_EXIT_DURATION_MS),
             ),
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
@@ -575,7 +589,6 @@ fun SystemMenu(
                             icon = Icons.Default.Settings,
                             onClick = {
                                 onNavigateRoute(PluviaScreen.Settings.route)
-                                onDismiss()
                             },
                             focusRequester = firstItemFocusRequester,
                         )
@@ -585,7 +598,6 @@ fun SystemMenu(
                             icon = Icons.Default.Download,
                             onClick = {
                                 onDownloadsClick()
-                                onDismiss()
                             },
                             focusRequester = firstItemFocusRequester,
                         )
@@ -631,8 +643,9 @@ fun SystemMenu(
                                 text = stringResource(R.string.steam_go_offline),
                                 icon = Icons.AutoMirrored.Filled.AirplaneTicket,
                                 onClick = {
-                                    onNavigateRoute(PluviaScreen.Home.route + "?offline=true") // TODO: test this
-                                    onDismiss()
+                                    dismissThen {
+                                        onNavigateRoute(PluviaScreen.Home.route + "?offline=true") // TODO: test this
+                                    }
                                 },
                             )
 
