@@ -131,6 +131,7 @@ private fun SystemMenuItem(
 
     Box(
         modifier = modifier
+            .fillMaxWidth()
             .scale(scale)
             .clip(RoundedCornerShape(12.dp))
             .background(backgroundColor)
