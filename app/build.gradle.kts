@@ -9,7 +9,6 @@ plugins {
     alias(libs.plugins.jetbrains.serialization)
     alias(libs.plugins.kotlinter)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.secrets.gradle)
     alias(libs.plugins.room)
 }
 
@@ -19,6 +18,19 @@ val keystoreProperties: Properties? = if (keystorePropertiesFile.exists()) {
         load(FileInputStream(keystorePropertiesFile))
     }
 } else null
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        load(FileInputStream(file))
+    }
+}
+
+fun secret(name: String): String =
+    project.findProperty(name) as String?
+        ?: System.getenv(name)
+        ?: localProperties.getProperty(name)
+        ?: ""
 
 // Add PostHog API key and host as build-time variables
 val posthogApiKey: String = project.findProperty("POSTHOG_API_KEY") as String? ?: System.getenv("POSTHOG_API_KEY") ?: ""
@@ -68,9 +80,6 @@ android {
         versionName = "1.1.0"
 
         buildConfigField("boolean", "GOLD", "false")
-        fun secret(name: String) =
-            project.findProperty(name) as String? ?: System.getenv(name) ?: ""
-
         buildConfigField("String", "POSTHOG_API_KEY", "\"${secret("POSTHOG_API_KEY")}\"")
         buildConfigField("String", "POSTHOG_HOST",  "\"${secret("POSTHOG_HOST")}\"")
         buildConfigField("String", "STEAMGRIDDB_API_KEY", "\"${secret("STEAMGRIDDB_API_KEY")}\"")

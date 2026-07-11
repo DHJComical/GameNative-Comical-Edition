@@ -15,6 +15,9 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    env:
+      HAS_SIGNING_SECRETS: ${{ secrets.KEYSTORE != '' && secrets.KEYSTORE_KEY_ALIAS != '' && secrets.KEYSTORE_KEY_PASSWORD != '' && secrets.KEYSTORE_STORE_PASSWORD != '' && secrets.PROD_KEYSTORE != '' && secrets.PROD_KEYSTORE_KEY_ALIAS != '' && secrets.PROD_KEYSTORE_KEY_PASSWORD != '' && secrets.PROD_KEYSTORE_STORE_PASSWORD != '' }}
+      HAS_DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
 
     steps:
     - uses: actions/checkout@v4
@@ -30,6 +33,7 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
 
     - name: Configure Keystore
+      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         KEYSTORE: ${{ secrets.KEYSTORE }}
         KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
@@ -44,6 +48,7 @@ jobs:
         echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
 
     - name: Configure Production Keystore
+      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         PROD_KEYSTORE: ${{ secrets.PROD_KEYSTORE }}
         PROD_KEYSTORE_KEY_ALIAS: ${{ secrets.PROD_KEYSTORE_KEY_ALIAS }}
@@ -94,11 +99,13 @@ jobs:
         unzip -p app-legacy-xr-release.apks universal.apk > universal-legacy-xr.apk
 
     - name: Copy lineage file
+      if: env.HAS_SIGNING_SECRETS == 'true'
       run: |
         mkdir -p app/keystores
         cp prod-debug.lineage app/keystores/prod-debug.lineage
 
     - name: Dual sign universal APKs
+      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         DEBUG_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
         DEBUG_KEY_PASS: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
@@ -158,13 +165,14 @@ jobs:
         } >>"$GITHUB_OUTPUT"
 
     - name: Post to Discord
+      if: env.HAS_DISCORD_WEBHOOK == 'true'
       env:
         DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         # Read via env to avoid shell-quoting traps with multiline changelogs.
         CHANGELOG: ${{ steps.changelog.outputs.log }}
-        LEGACY_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed.zip
-        MODERN_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed-modern.zip
-        LEGACY_XR_URL: https://nightly.link/utkarshdalal/GameNative/actions/runs/${{ github.run_id }}/app-release-signed-legacy-xr.zip
+        LEGACY_URL: https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/app-release-signed.zip
+        MODERN_URL: https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/app-release-signed-modern.zip
+        LEGACY_XR_URL: https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/app-release-signed-legacy-xr.zip
       run: |
         # jq -n handles JSON escaping (newlines, quotes, etc.) for us.
         payload=$(jq -n \
