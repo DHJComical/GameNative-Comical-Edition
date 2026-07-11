@@ -936,7 +936,7 @@ class SteamAppScreen : BaseAppScreen() {
         // Legacy keeps its existing MANAGE_EXTERNAL_STORAGE / runtime perm flow.
         val initialStoragePermissionGranted = remember {
             when {
-                BuildConfig.MODERN_ANDROID -> true
+                BuildConfig.MODERN_ANDROID && PrefManager.defaultSteamLibraryPath.isBlank() -> true
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
                 else -> {
                     val writePermissionGranted = ContextCompat.checkSelfPermission(
@@ -1335,7 +1335,7 @@ class SteamAppScreen : BaseAppScreen() {
                 onGetDisplayInfo = { context ->
                     return@GameManagerDialog getGameDisplayInfo(context, libraryItem)
                 },
-                onInstall = { dlcAppIds ->
+                onInstall = { dlcAppIds, steamLibraryRoot ->
                     hideGameManagerDialog(gameId)
 
                     val installedApp = SteamService.getInstalledApp(gameId)
@@ -1350,7 +1350,12 @@ class SteamAppScreen : BaseAppScreen() {
                         properties = mapOf("game_name" to (appInfo?.name ?: ""))
                     )
                     CoroutineScope(Dispatchers.IO).launch {
-                        SteamService.downloadApp(gameId, dlcAppIds, isUpdateOrVerify = false)
+                        SteamService.downloadApp(
+                            gameId,
+                            dlcAppIds,
+                            isUpdateOrVerify = false,
+                            steamLibraryRoot = steamLibraryRoot,
+                        )
                     }
                 },
                 onDismissRequest = {

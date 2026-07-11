@@ -1190,6 +1190,24 @@ object PrefManager {
             setPref(EXTERNAL_STORAGE_PATH, value)
         }
 
+    private val STEAM_LIBRARY_PATHS = stringPreferencesKey("steam_library_paths")
+    var steamLibraryPaths: Set<String>
+        get() = try {
+            Json.decodeFromString<Set<String>>(getPref(STEAM_LIBRARY_PATHS, "[]"))
+        } catch (_: Exception) {
+            emptySet()
+        }
+        set(value) {
+            setPref(STEAM_LIBRARY_PATHS, Json.encodeToString(value))
+        }
+
+    private val DEFAULT_STEAM_LIBRARY_PATH = stringPreferencesKey("default_steam_library_path")
+    var defaultSteamLibraryPath: String
+        get() = getPref(DEFAULT_STEAM_LIBRARY_PATH, "")
+        set(value) {
+            setPref(DEFAULT_STEAM_LIBRARY_PATH, value)
+        }
+
     private val FRONTEND_SYNC_DIR_STEAM = stringPreferencesKey("frontend_sync_dir_steam")
     private val FRONTEND_SYNC_DIR_EPIC = stringPreferencesKey("frontend_sync_dir_epic")
     private val FRONTEND_SYNC_DIR_GOG = stringPreferencesKey("frontend_sync_dir_gog")

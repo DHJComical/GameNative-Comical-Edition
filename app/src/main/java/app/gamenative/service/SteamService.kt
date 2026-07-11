@@ -460,6 +460,12 @@ class SteamService : Service(), IChallengeUrlChanged {
         val externalAppInstallPath: String
             get() = Paths.get(externalAppInstallRoot, "Steam", "steamapps", "common").pathString
 
+        internal fun steamLibraryInstallPath(rootPath: String): String =
+            Paths.get(rootPath, "steamapps", "common").pathString
+
+        internal fun steamLibraryStagingPath(rootPath: String): String =
+            Paths.get(rootPath, "steamapps", "staging").pathString
+
         // all install paths: internal + configured external + all mounted volumes
         val allInstallPaths: List<String>
             get() {
@@ -468,6 +474,9 @@ class SteamService : Service(), IChallengeUrlChanged {
                 if (PrefManager.externalStoragePath.isNotBlank()) {
                     paths += externalAppInstallPath
                 }
+                paths += PrefManager.steamLibraryPaths
+                    .filter { it.isNotBlank() }
+                    .map(::steamLibraryInstallPath)
                 for (volPath in DownloadService.externalVolumePaths) {
                     if (volPath.isNotBlank()) {
                         paths += Paths.get(volPath, "Steam", "steamapps", "common").pathString
@@ -508,6 +517,9 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         val defaultAppInstallPath: String
             get() {
+                PrefManager.defaultSteamLibraryPath.takeIf { it.isNotBlank() }?.let {
+                    return steamLibraryInstallPath(it)
+                }
                 return if (externalStorageReady) {
                     Timber.i("Using external storage")
                     Timber.i("install path for external storage is " + externalAppInstallPath)
@@ -520,6 +532,9 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         val defaultAppStagingPath: String
             get() {
+                PrefManager.defaultSteamLibraryPath.takeIf { it.isNotBlank() }?.let {
+                    return steamLibraryStagingPath(it)
+                }
                 return if (PrefManager.useExternalStorage) {
                     externalAppStagingPath
                 } else {
@@ -1073,7 +1088,8 @@ class SteamService : Service(), IChallengeUrlChanged {
             return firstExisting
         }
 
-        fun getAppDirPath(gameId: Int): String {
+        @JvmOverloads
+        fun getAppDirPath(gameId: Int, steamLibraryRoot: String? = null): String {
             val info = getAppInfoOf(gameId)
 
             // For installed game, check whether it has customInstallPath and return it
@@ -1086,15 +1102,21 @@ class SteamService : Service(), IChallengeUrlChanged {
             val oldName = info?.name.orEmpty()
             val names = if (oldName.isNotEmpty() && oldName != appName) listOf(appName, oldName) else listOf(appName)
 
+            if (steamLibraryRoot != null) {
+                val installPath = if (steamLibraryRoot.isBlank()) {
+                    internalAppInstallPath
+                } else {
+                    steamLibraryInstallPath(steamLibraryRoot)
+                }
+                return Paths.get(installPath, appName).pathString
+            }
+
             // prefer completed installs over partial/stale directories
             val resolved = resolveExistingAppDir(allInstallPaths, names)
             if (resolved != null) return resolved
 
             // nothing on disk yet — default to preferred install location
-            if (PrefManager.useExternalStorage) {
-                return Paths.get(externalAppInstallPath, appName).pathString
-            }
-            return Paths.get(internalAppInstallPath, appName).pathString
+            return Paths.get(defaultAppInstallPath, appName).pathString
         }
 
         private fun isExecutable(flags: Any): Boolean = when (flags) {
@@ -1392,7 +1414,13 @@ class SteamService : Service(), IChallengeUrlChanged {
             }
         }
 
-        fun downloadApp(appId: Int, dlcAppIds: List<Int>, branch: String = "public", isUpdateOrVerify: Boolean): DownloadInfo? {
+        fun downloadApp(
+            appId: Int,
+            dlcAppIds: List<Int>,
+            branch: String = "public",
+            isUpdateOrVerify: Boolean,
+            steamLibraryRoot: String? = null,
+        ): DownloadInfo? {
             if (!checkWifiOrNotify()) return null
             return getAppInfoOf(appId)?.let { appInfo ->
                 val container = ContainerManager(instance!!.applicationContext).getContainerById("STEAM_${appId}")
@@ -1411,7 +1439,9 @@ class SteamService : Service(), IChallengeUrlChanged {
                     userSelectedDlcAppIds = dlcAppIds,
                     branch = branch,
                     containerLanguage = containerLanguage,
-                    isUpdateOrVerify = isUpdateOrVerify)
+                    isUpdateOrVerify = isUpdateOrVerify,
+                    steamLibraryRoot = steamLibraryRoot,
+                )
             }
         }
 
@@ -1711,8 +1741,9 @@ class SteamService : Service(), IChallengeUrlChanged {
             branch: String,
             containerLanguage: String,
             isUpdateOrVerify: Boolean,
+            steamLibraryRoot: String? = null,
         ): DownloadInfo? {
-            val appDirPath = getAppDirPath(appId)
+            val appDirPath = getAppDirPath(appId, steamLibraryRoot)
 
             if (!checkWifiOrNotify()) return null
             if (downloadJobs.contains(appId)) return getAppDownloadInfo(appId)
@@ -1876,7 +1907,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
                             val mainAppItem = AppItem(
                                 appId,
-                                installDirectory = getAppDirPath(appId),
+                                installDirectory = appDirPath,
                                 depot = mainAppDepotIds,
                                 branch = branch,
                                 branchPassword = branchPassword,
@@ -1891,7 +1922,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
                             val dlcAppItem = AppItem(
                                 dlcAppId,
-                                installDirectory = getAppDirPath(appId),
+                                installDirectory = appDirPath,
                                 depot = dlcDepotIds,
                                 branch = branch,
                                 branchPassword = branchPassword,
@@ -1906,7 +1937,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                         // Start Download
                         depotDownloader.startDownloading()
 
-                        Timber.i("Downloading game to " + defaultAppInstallPath)
+                        Timber.i("Downloading game to $appDirPath")
 
                         // Wait for completion
                         depotDownloader.getCompletion().await()
@@ -1920,7 +1951,6 @@ class SteamService : Service(), IChallengeUrlChanged {
                                 .let { selectSteamControllerConfig(it) }
 
                             if (controllerConfig != null) {
-                                val appDirPath = getAppDirPath(appId)
                                 val publishedFileId = controllerConfig.publishedFileId
 
                                 runCatching {

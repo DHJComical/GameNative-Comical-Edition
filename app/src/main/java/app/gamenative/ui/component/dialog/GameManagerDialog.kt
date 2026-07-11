@@ -1,7 +1,14 @@
 package app.gamenative.ui.component.dialog
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +28,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,7 +37,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -46,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.gamenative.BuildConfig
+import app.gamenative.PrefManager
 import app.gamenative.R
 import app.gamenative.data.DepotInfo
 import app.gamenative.service.SteamService
@@ -77,7 +88,7 @@ data class InstallSizeInfo(
 fun GameManagerDialog(
     visible: Boolean,
     onGetDisplayInfo: @Composable (Context) -> GameDisplayInfo,
-    onInstall: (List<Int>) -> Unit,
+    onInstall: (List<Int>, String) -> Unit,
     onDismissRequest: () -> Unit
 ) {
     val context = LocalContext.current
@@ -87,6 +98,41 @@ fun GameManagerDialog(
     val allDownloadableApps = remember { mutableStateListOf<Pair<Int, DepotInfo>>() }
     val selectedAppIds = remember { mutableStateMapOf<Int, Boolean>() }
     val enabledAppIds = remember { mutableStateMapOf<Int, Boolean>() }
+    val steamLibraries = remember {
+        listOf("" to SteamService.internalAppInstallPath) + PrefManager.steamLibraryPaths
+            .filter { it.isNotBlank() }
+            .sorted()
+            .map { it to SteamService.steamLibraryInstallPath(it) }
+    }
+    var selectedSteamLibraryRoot by remember {
+        mutableStateOf(
+            PrefManager.defaultSteamLibraryPath.takeIf { selected ->
+                steamLibraries.any { it.first == selected }
+            }.orEmpty(),
+        )
+    }
+    var pendingSteamLibraryRoot by remember { mutableStateOf<String?>(null) }
+    val allFilesAccessLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            pendingSteamLibraryRoot?.let { selectedSteamLibraryRoot = it }
+        }
+        pendingSteamLibraryRoot = null
+    }
+
+    fun selectSteamLibrary(root: String) {
+        if (root.isBlank() || Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            selectedSteamLibraryRoot = root
+            return
+        }
+        pendingSteamLibraryRoot = root
+        allFilesAccessLauncher.launch(
+            Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:${context.packageName}")
+            },
+        )
+    }
 
     val displayInfo = onGetDisplayInfo(context)
     val gameId = displayInfo.gameId
@@ -201,7 +247,9 @@ fun GameManagerDialog(
     }
 
     fun getInstallSizeInfo(): InstallSizeInfo {
-        val availableBytes = StorageUtils.getAvailableSpaceForUncreatedPath(SteamService.getAppDirPath(gameId))
+        val availableBytes = StorageUtils.getAvailableSpaceForUncreatedPath(
+            SteamService.getAppDirPath(gameId, selectedSteamLibraryRoot),
+        )
 
         val baseGameInstallBytes = if (!isBaseGameInstalled) {
             downloadableDepots
@@ -258,7 +306,12 @@ fun GameManagerDialog(
         }
     }
 
-    val installSizeInfo by remember(downloadableDepots.keys.toSet(), selectedAppIds.toMap(), enabledAppIds.toMap()) {
+    val installSizeInfo by remember(
+        downloadableDepots.keys.toSet(),
+        selectedAppIds.toMap(),
+        enabledAppIds.toMap(),
+        selectedSteamLibraryRoot,
+    ) {
         derivedStateOf { getInstallSizeInfo() }
     }
 
@@ -469,6 +522,40 @@ fun GameManagerDialog(
                         Column(
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            Text(
+                                text = stringResource(R.string.steam_install_library_label),
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                            steamLibraries.forEach { (root, installPath) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectSteamLibrary(root) }
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = selectedSteamLibraryRoot == root,
+                                        onClick = { selectSteamLibrary(root) },
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = if (root.isBlank()) {
+                                                stringResource(R.string.steam_library_built_in)
+                                            } else {
+                                                stringResource(R.string.steam_library_custom)
+                                            },
+                                        )
+                                        Text(
+                                            text = installPath,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -486,7 +573,7 @@ fun GameManagerDialog(
                                     onClick = {
                                         onInstall(selectedAppIds
                                             .filter { selectedId -> selectedId.key in enabledAppIds.filter { enabledId -> enabledId.value } }
-                                            .filter { selectedId -> selectedId.value }.keys.toList())
+                                            .filter { selectedId -> selectedId.value }.keys.toList(), selectedSteamLibraryRoot)
                                     }
                                 ) {
                                     Text(stringResource(R.string.install))
@@ -525,7 +612,7 @@ fun Preview_GameManagerDialog() {
             onGetDisplayInfo = {
                 return@GameManagerDialog displayInfo
             },
-            onInstall = {},
+            onInstall = { _, _ -> },
             onDismissRequest = {}
         )
     }

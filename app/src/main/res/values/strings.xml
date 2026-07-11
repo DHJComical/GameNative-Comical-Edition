@@ -1017,6 +1017,17 @@
     <string name="settings_storage_title">Storage</string>
     <string name="settings_storage_manage_title">Storage Manager</string>
     <string name="settings_storage_manage_subtitle">Review game and container storage in one place</string>
+    <string name="steam_libraries_title">Steam libraries</string>
+    <string name="steam_libraries_subtitle">Choose where new Steam games are installed</string>
+    <string name="steam_library_add">Add library</string>
+    <string name="steam_library_built_in">Built-in library</string>
+    <string name="steam_library_default">Default library</string>
+    <string name="steam_library_custom">Steam library</string>
+    <string name="steam_library_set_default">Set default</string>
+    <string name="steam_library_remove">Remove library</string>
+    <string name="steam_library_invalid_path">The selected directory could not be used</string>
+    <string name="steam_library_create_failed">Could not create a Steam library in %1$s</string>
+    <string name="steam_install_library_label">Install location</string>
     <string name="storage_internal">Internal</string>
     <string name="storage_external">External</string>
     <string name="storage_free_of_total">%1$s: %2$s free of %3$s</string>
