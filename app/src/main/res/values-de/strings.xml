@@ -99,7 +99,7 @@
     <string name="downloads_status_complete">Abgeschlossen</string>
     <string name="downloads_status_failed">Fehlgeschlagen</string>
     <string name="downloads_status_paused">Pausiert</string>
-    <string name="downloads_summary">Aktive Downloads und Speicher an einem Ort verwalten</string>
+    <string name="downloads_summary">%1$d aktiv • %2$d fortsetzbar • %3$d abgeschlossen</string>
     <string name="storage_internal">Intern</string>
     <string name="storage_external">Extern</string>
     <string name="storage_free_of_total">%1$s: %2$s frei von %3$s</string>
@@ -123,7 +123,7 @@
     <string name="container_storage_move_to_internal_button">Nach intern verschieben</string>
     <string name="container_storage_move_external_disabled">Lege in den Einstellungen zuerst einen externen Speicherpfad fest, bevor du Spiele verschiebst.</string>
     <string name="container_storage_move_success">%1$s nach %2$s verschoben</string>
-    <string name="container_storage_move_failed">Spiel konnte nicht verschoben werden: %1$s</string>
+    <string name="container_storage_move_failed">%1$s konnte nicht verschoben werden: %2$s</string>
     <string name="container_storage_remove_button">Container entfernen</string>
     <string name="container_storage_remove_title">Container entfernen</string>
     <string name="container_storage_remove_message">Container für %1$s entfernen? Die Spieldateien bleiben auf dem Datenträger.</string>
@@ -714,14 +714,12 @@
     <string name="directinput_mapper_type">DirectInput-Mapper-Typ</string>
     <string name="disable_mouse_input">Mauseingabe deaktivieren</string>
     <string name="touchscreen_mode">Touchscreen-Modus</string>
-    <string name="touchscreen_mode_description">Für Visual Novels und RTS-Spiele</string>
     <string name="shooter_mode_toggle">Shooter-Modus</string>
     <string name="shooter_mode_toggle_description">Stick-Elemente durch dynamische Joysticks ersetzen</string>
     <string name="shooter_mode_on">Maus aktivieren</string>
     <string name="shooter_mode_off">Sticks aktivieren</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Gesten-Einstellungen</string>
     <string name="gesture_settings_title">Touch-Gesten-Einstellungen</string>
     <string name="gesture_tap">Tippen</string>
     <string name="gesture_tap_subtitle">Linksklick</string>
@@ -1568,4 +1566,16 @@
     <string name="option_share_diagnostics">Diagnose teilen</string>
     <string name="diagnostics_share_title">Diagnoseprotokoll teilen</string>
     <string name="diagnostics_share_none">Noch kein Diagnoseprotokoll. Zuerst \"Diagnoselauf\" verwenden.</string>
+    <string name="steam_install_library_label">Installationsort</string>
+    <string name="steam_install_space">Downloadgröße: %1$s\nGröße auf dem Datenträger: %2$s\nVerfügbarer Speicherplatz: %3$s</string>
+    <string name="steam_libraries_subtitle">Wähle aus, wo neue Steam-Spiele installiert werden</string>
+    <string name="steam_libraries_title">Steam-Bibliotheken</string>
+    <string name="steam_library_add">Bibliothek hinzufügen</string>
+    <string name="steam_library_built_in">Integrierte Bibliothek</string>
+    <string name="steam_library_create_failed">Unter %1$s konnte keine Steam-Bibliothek erstellt werden</string>
+    <string name="steam_library_custom">Steam-Bibliothek</string>
+    <string name="steam_library_default">Standardbibliothek</string>
+    <string name="steam_library_invalid_path">Das ausgewählte Verzeichnis konnte nicht verwendet werden</string>
+    <string name="steam_library_remove">Bibliothek entfernen</string>
+    <string name="steam_library_set_default">Als Standard festlegen</string>
 </resources>

@@ -101,7 +101,7 @@
     <string name="downloads_status_complete">Завершено</string>
     <string name="downloads_status_failed">Помилка</string>
     <string name="downloads_status_paused">Призупинено</string>
-    <string name="downloads_summary">Керуйте активними завантаженнями та сховищем в одному місці</string>
+    <string name="downloads_summary">%1$d активних • %2$d можна продовжити • %3$d завершених</string>
     <string name="storage_internal">Внутрішня</string>
     <string name="storage_external">Зовнішня</string>
     <string name="storage_free_of_total">%1$s: %2$s вільно з %3$s</string>
@@ -125,7 +125,7 @@
     <string name="container_storage_move_to_internal_button">Перемістити на внутрішнє</string>
     <string name="container_storage_move_external_disabled">Перш ніж переміщувати ігри, у Налаштуваннях задайте шлях до зовнішнього сховища.</string>
     <string name="container_storage_move_success">Переміщено %1$s до %2$s</string>
-    <string name="container_storage_move_failed">Не вдалося перемістити гру: %1$s</string>
+    <string name="container_storage_move_failed">Не вдалося перемістити %1$s: %2$s</string>
     <string name="container_storage_remove_button">Видалити контейнер</string>
     <string name="container_storage_remove_title">Видалити контейнер</string>
     <string name="container_storage_remove_message">Видалити контейнер для %1$s? Файли гри залишаться на диску.</string>
@@ -735,14 +735,12 @@
     <string name="directinput_mapper_type">Тип мапера DirectInput</string>
     <string name="disable_mouse_input">Вимкнути введення мишею</string>
     <string name="touchscreen_mode">Режим сенсорного екрану</string>
-    <string name="touchscreen_mode_description">Для візуальних романів та ігор RTS</string>
     <string name="shooter_mode_toggle">Режим шутера</string>
     <string name="shooter_mode_toggle_description">Замінити джойстики на динамічні</string>
     <string name="shooter_mode_on">Увімкнути мишу</string>
     <string name="shooter_mode_off">Увімкнути джойстики</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Налаштування жестів</string>
     <string name="gesture_settings_title">Налаштування сенсорних жестів</string>
     <string name="gesture_tap">Натискання</string>
     <string name="gesture_tap_subtitle">Лівий клік</string>
@@ -1622,4 +1620,19 @@
     <string name="option_share_diagnostics">Поділитися діагностикою</string>
     <string name="diagnostics_share_title">Поділитися журналом діагностики</string>
     <string name="diagnostics_share_none">Журналу діагностики ще немає. Спершу скористайтеся \"Діагностичний запуск\".</string>
+    <string name="epic_cancel_download_message">Скасувати завантаження цієї гри?</string>
+    <string name="epic_delete_download_message">Видалити всі завантажені дані цієї гри?</string>
+    <string name="epic_uninstall_error">Помилка видалення: %1$s</string>
+    <string name="epic_uninstall_failed">Не вдалося видалити: %1$s</string>
+    <string name="steam_install_library_label">Місце встановлення</string>
+    <string name="steam_libraries_subtitle">Виберіть, де встановлювати нові ігри Steam</string>
+    <string name="steam_libraries_title">Бібліотеки Steam</string>
+    <string name="steam_library_add">Додати бібліотеку</string>
+    <string name="steam_library_built_in">Вбудована бібліотека</string>
+    <string name="steam_library_create_failed">Не вдалося створити бібліотеку Steam у %1$s</string>
+    <string name="steam_library_custom">Бібліотека Steam</string>
+    <string name="steam_library_default">Бібліотека за замовчуванням</string>
+    <string name="steam_library_invalid_path">Вибрану папку не можна використати</string>
+    <string name="steam_library_remove">Видалити бібліотеку</string>
+    <string name="steam_library_set_default">Зробити основною</string>
 </resources>

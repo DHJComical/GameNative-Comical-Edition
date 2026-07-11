@@ -113,7 +113,7 @@
     <string name="downloads_status_complete">Ukończono</string>
     <string name="downloads_status_failed">Nieudane</string>
     <string name="downloads_status_paused">Wstrzymano</string>
-    <string name="downloads_summary">Zarządzaj aktywnymi pobraniami i pamięcią w jednym miejscu</string>
+    <string name="downloads_summary">%1$d aktywne • %2$d do wznowienia • %3$d ukończone</string>
     <string name="storage_internal">Wewnętrzny</string>
     <string name="storage_external">Zewnętrzny</string>
     <string name="storage_free_of_total">%1$s: %2$s wolne z %3$s</string>
@@ -137,7 +137,7 @@
     <string name="container_storage_move_to_internal_button">Przenieś do wewnętrznej</string>
     <string name="container_storage_move_external_disabled">Ustaw ścieżkę pamięci zewnętrznej w Ustawieniach przed przenoszeniem gier.</string>
     <string name="container_storage_move_success">Przeniesiono %1$s do %2$s</string>
-    <string name="container_storage_move_failed">Nie udało się przenieść gry: %1$s</string>
+    <string name="container_storage_move_failed">Nie udało się przenieść %1$s: %2$s</string>
     <string name="container_storage_remove_button">Usuń kontener</string>
     <string name="container_storage_remove_title">Usuń kontener</string>
     <string name="container_storage_remove_message">Usunąć kontener dla %1$s? Pliki gry pozostaną na dysku.</string>
@@ -749,14 +749,12 @@
     <string name="directinput_mapper_type">Typ mapowania DirectInput</string>
     <string name="disable_mouse_input">Wyłącz wejście myszy</string>
     <string name="touchscreen_mode">Tryb ekranu dotykowego</string>
-    <string name="touchscreen_mode_description">Dla powieści wizualnych i gier RTS</string>
     <string name="shooter_mode_toggle">Tryb strzelanki</string>
     <string name="shooter_mode_toggle_description">Zamień drążki na dynamiczne joysticki</string>
     <string name="shooter_mode_on">Włącz mysz</string>
     <string name="shooter_mode_off">Włącz drążki</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Ustawienia gestów</string>
     <string name="gesture_settings_title">Ustawienia gestów dotykowych</string>
     <string name="gesture_tap">Dotknięcie</string>
     <string name="gesture_tap_subtitle">Kliknięcie lewe</string>
@@ -1626,4 +1624,16 @@
     <string name="option_share_diagnostics">Udostępnij diagnostykę</string>
     <string name="diagnostics_share_title">Udostępnij dziennik diagnostyki</string>
     <string name="diagnostics_share_none">Brak dziennika diagnostyki. Najpierw użyj \"Uruchomienie diagnostyczne\".</string>
+    <string name="extreme">Ekstremalny</string>
+    <string name="steam_install_library_label">Miejsce instalacji</string>
+    <string name="steam_libraries_subtitle">Wybierz, gdzie instalować nowe gry Steam</string>
+    <string name="steam_libraries_title">Biblioteki Steam</string>
+    <string name="steam_library_add">Dodaj bibliotekę</string>
+    <string name="steam_library_built_in">Wbudowana biblioteka</string>
+    <string name="steam_library_create_failed">Nie udało się utworzyć biblioteki Steam w %1$s</string>
+    <string name="steam_library_custom">Biblioteka Steam</string>
+    <string name="steam_library_default">Domyślna biblioteka</string>
+    <string name="steam_library_invalid_path">Nie można użyć wybranego katalogu</string>
+    <string name="steam_library_remove">Usuń bibliotekę</string>
+    <string name="steam_library_set_default">Ustaw jako domyślną</string>
 </resources>

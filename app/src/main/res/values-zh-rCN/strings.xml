@@ -104,7 +104,7 @@
     <string name="downloads_status_complete">已完成</string>
     <string name="downloads_status_failed">失败</string>
     <string name="downloads_status_paused">已暂停</string>
-    <string name="downloads_summary">在一处管理活动下载和存储</string>
+    <string name="downloads_summary">%1$d 个正在下载 • %2$d 个可恢复 • %3$d 个已完成</string>
     <string name="storage_internal">内部</string>
     <string name="storage_external">外部</string>
     <string name="storage_free_of_total">%1$s：%3$s 中有 %2$s 可用</string>
@@ -128,7 +128,7 @@
     <string name="container_storage_move_to_internal_button">移动到内部</string>
     <string name="container_storage_move_external_disabled">移动游戏前，请先在设置中配置外部存储路径。</string>
     <string name="container_storage_move_success">已将 %1$s 移动到 %2$s</string>
-    <string name="container_storage_move_failed">移动游戏失败：%1$s</string>
+    <string name="container_storage_move_failed">移动 %1$s 失败：%2$s</string>
     <string name="container_storage_remove_button">移除容器</string>
     <string name="container_storage_remove_title">移除容器</string>
     <string name="container_storage_remove_message">要移除 %1$s 的容器吗？游戏文件将保留在磁盘上。</string>
@@ -725,14 +725,12 @@
     <string name="directinput_mapper_type">DirectInput 映射器类型</string>
     <string name="disable_mouse_input">禁用鼠标输入</string>
     <string name="touchscreen_mode">触屏模式</string>
-    <string name="touchscreen_mode_description">适用于视觉小说和即时战略游戏</string>
     <string name="shooter_mode_toggle">射击模式</string>
     <string name="shooter_mode_toggle_description">用动态摇杆替换摇杆元素</string>
     <string name="shooter_mode_on">启用鼠标</string>
     <string name="shooter_mode_off">启用摇杆</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">手势设置</string>
     <string name="gesture_settings_title">触控手势设置</string>
     <string name="gesture_tap">点击</string>
     <string name="gesture_tap_subtitle">左键单击</string>
@@ -1646,4 +1644,16 @@
     <string name="option_share_diagnostics">分享诊断</string>
     <string name="diagnostics_share_title">分享诊断日志</string>
     <string name="diagnostics_share_none">尚无诊断日志。请先使用「诊断运行」。</string>
+    <string name="display_renderer">显示渲染器</string>
+    <string name="steam_install_library_label">安装位置</string>
+    <string name="steam_libraries_subtitle">选择新 Steam 游戏的安装位置</string>
+    <string name="steam_libraries_title">Steam 库</string>
+    <string name="steam_library_add">添加库</string>
+    <string name="steam_library_built_in">内置库</string>
+    <string name="steam_library_create_failed">无法在 %1$s 中创建 Steam 库</string>
+    <string name="steam_library_custom">Steam 库</string>
+    <string name="steam_library_default">默认库</string>
+    <string name="steam_library_invalid_path">无法使用所选目录</string>
+    <string name="steam_library_remove">移除库</string>
+    <string name="steam_library_set_default">设为默认</string>
 </resources>

@@ -104,7 +104,7 @@
     <string name="downloads_status_complete">Completato</string>
     <string name="downloads_status_failed">Fallito</string>
     <string name="downloads_status_paused">In pausa</string>
-    <string name="downloads_summary">Gestisci download attivi e archiviazione in un unico posto</string>
+    <string name="downloads_summary">%1$d attivi • %2$d ripristinabili • %3$d completati</string>
     <string name="storage_internal">Interno</string>
     <string name="storage_external">Esterno</string>
     <string name="storage_free_of_total">%1$s: %2$s liberi su %3$s</string>
@@ -128,7 +128,7 @@
     <string name="container_storage_move_to_internal_button">Sposta su interna</string>
     <string name="container_storage_move_external_disabled">Imposta un percorso di archiviazione esterna nelle Impostazioni prima di spostare i giochi.</string>
     <string name="container_storage_move_success">Spostato %1$s in %2$s</string>
-    <string name="container_storage_move_failed">Impossibile spostare il gioco: %1$s</string>
+    <string name="container_storage_move_failed">Impossibile spostare %1$s: %2$s</string>
     <string name="container_storage_remove_button">Rimuovi container</string>
     <string name="container_storage_remove_title">Rimuovi container</string>
     <string name="container_storage_remove_message">Rimuovere il container per %1$s? I file di gioco rimarranno sul disco.</string>
@@ -740,14 +740,12 @@
     <string name="directinput_mapper_type">Tipo Mapper DirectInput</string>
     <string name="disable_mouse_input">Disabilita Input Mouse</string>
     <string name="touchscreen_mode">Modalità Touchscreen</string>
-    <string name="touchscreen_mode_description">Per visual novel e giochi RTS</string>
     <string name="shooter_mode_toggle">Modalità sparatutto</string>
     <string name="shooter_mode_toggle_description">Sostituisci gli stick con joystick dinamici</string>
     <string name="shooter_mode_on">Attiva mouse</string>
     <string name="shooter_mode_off">Attiva stick</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Impostazioni gesti</string>
     <string name="gesture_settings_title">Impostazioni gesti touch</string>
     <string name="gesture_tap">Tocco</string>
     <string name="gesture_tap_subtitle">Clic sinistro</string>
@@ -1619,4 +1617,23 @@
     <string name="option_share_diagnostics">Condividi diagnostica</string>
     <string name="diagnostics_share_title">Condividi il log di diagnostica</string>
     <string name="diagnostics_share_none">Nessun log di diagnostica. Usa prima \"Esecuzione diagnostica\".</string>
+    <string name="external_display_input">Input schermo esterno</string>
+    <string name="external_display_input_subtitle">Scegli come deve comportarsi uno schermo di presentazione collegato</string>
+    <string name="external_display_mode_hybrid">Ibrido (touchpad + pulsante tastiera)</string>
+    <string name="external_display_mode_keyboard">Usa come tastiera completa</string>
+    <string name="external_display_mode_off">Non usare lo schermo esterno</string>
+    <string name="external_display_mode_touchpad">Usa come superficie touchpad</string>
+    <string name="external_display_swap">Mostra il gioco sullo schermo esterno</string>
+    <string name="external_display_swap_subtitle">Scambia gli schermi in modo che il gioco venga visualizzato sullo schermo esterno e questo dispositivo diventi la superficie di controllo</string>
+    <string name="steam_install_library_label">Percorso di installazione</string>
+    <string name="steam_libraries_subtitle">Scegli dove installare i nuovi giochi Steam</string>
+    <string name="steam_libraries_title">Librerie Steam</string>
+    <string name="steam_library_add">Aggiungi libreria</string>
+    <string name="steam_library_built_in">Libreria integrata</string>
+    <string name="steam_library_create_failed">Impossibile creare una libreria Steam in %1$s</string>
+    <string name="steam_library_custom">Libreria Steam</string>
+    <string name="steam_library_default">Libreria predefinita</string>
+    <string name="steam_library_invalid_path">La directory selezionata non può essere utilizzata</string>
+    <string name="steam_library_remove">Rimuovi libreria</string>
+    <string name="steam_library_set_default">Imposta come predefinita</string>
 </resources>

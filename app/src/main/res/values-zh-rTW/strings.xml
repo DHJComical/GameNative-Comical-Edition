@@ -104,7 +104,7 @@
     <string name="downloads_status_complete">已完成</string>
     <string name="downloads_status_failed">失敗</string>
     <string name="downloads_status_paused">已暫停</string>
-    <string name="downloads_summary">在同一處管理進行中的下載與儲存</string>
+    <string name="downloads_summary">%1$d 個進行中 • %2$d 個可繼續 • %3$d 個已完成</string>
     <string name="storage_internal">內部</string>
     <string name="storage_external">外部</string>
     <string name="storage_free_of_total">%1$s：%3$s 中有 %2$s 可用</string>
@@ -128,7 +128,7 @@
     <string name="container_storage_move_to_internal_button">移動到內部</string>
     <string name="container_storage_move_external_disabled">移動遊戲前，請先在設定中設定外部儲存路徑。</string>
     <string name="container_storage_move_success">已將 %1$s 移動到 %2$s</string>
-    <string name="container_storage_move_failed">移動遊戲失敗：%1$s</string>
+    <string name="container_storage_move_failed">移動 %1$s 失敗：%2$s</string>
     <string name="container_storage_remove_button">移除容器</string>
     <string name="container_storage_remove_title">移除容器</string>
     <string name="container_storage_remove_message">要移除 %1$s 的容器嗎？遊戲檔案將保留在磁碟上。</string>
@@ -727,14 +727,12 @@
     <string name="directinput_mapper_type">DirectInput Mapper 類型</string>
     <string name="disable_mouse_input">停用滑鼠輸入</string>
     <string name="touchscreen_mode">觸屏模式</string>
-    <string name="touchscreen_mode_description">適用於視覺小說與即時戰略遊戲</string>
     <string name="shooter_mode_toggle">射擊模式</string>
     <string name="shooter_mode_toggle_description">以動態搖桿取代搖桿元素</string>
     <string name="shooter_mode_on">啟用滑鼠</string>
     <string name="shooter_mode_off">啟用搖桿</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">手勢設定</string>
     <string name="gesture_settings_title">觸控手勢設定</string>
     <string name="gesture_tap">點擊</string>
     <string name="gesture_tap_subtitle">左鍵點擊</string>
@@ -1637,4 +1635,16 @@
     <string name="option_share_diagnostics">分享診斷</string>
     <string name="diagnostics_share_title">分享診斷日誌</string>
     <string name="diagnostics_share_none">尚無診斷日誌。請先使用「診斷執行」。</string>
+    <string name="display_renderer">顯示渲染器</string>
+    <string name="steam_install_library_label">安裝位置</string>
+    <string name="steam_libraries_subtitle">選擇新 Steam 遊戲的安裝位置</string>
+    <string name="steam_libraries_title">Steam 遊戲庫</string>
+    <string name="steam_library_add">新增遊戲庫</string>
+    <string name="steam_library_built_in">內建遊戲庫</string>
+    <string name="steam_library_create_failed">無法在 %1$s 中建立 Steam 遊戲庫</string>
+    <string name="steam_library_custom">Steam 遊戲庫</string>
+    <string name="steam_library_default">預設遊戲庫</string>
+    <string name="steam_library_invalid_path">無法使用所選目錄</string>
+    <string name="steam_library_remove">移除遊戲庫</string>
+    <string name="steam_library_set_default">設為預設</string>
 </resources>
