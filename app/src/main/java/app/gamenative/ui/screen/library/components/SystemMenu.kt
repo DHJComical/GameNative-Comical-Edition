@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -250,6 +251,7 @@ fun SystemMenu(
     onDismiss: () -> Unit,
     onNavigateRoute: (String) -> Unit,
     onDownloadsClick: () -> Unit = {},
+    onStorageClick: () -> Unit = {},
     onLogout: () -> Unit,
     onGoOnline: () -> Unit,
     isOffline: Boolean = false,
@@ -594,12 +596,18 @@ fun SystemMenu(
                         )
 
                         SystemMenuItem(
-                            text = stringResource(R.string.app_downloads),
+                            text = stringResource(R.string.downloads_section_title),
                             icon = Icons.Default.Download,
                             onClick = {
                                 onDownloadsClick()
                             },
                             focusRequester = firstItemFocusRequester,
+                        )
+
+                        SystemMenuItem(
+                            text = stringResource(R.string.settings_storage_manage_title),
+                            icon = Icons.Default.Storage,
+                            onClick = onStorageClick,
                         )
 
                         SystemMenuItem(

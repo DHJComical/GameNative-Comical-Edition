@@ -97,7 +97,7 @@ import com.skydoves.landscapist.coil.CoilImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class DownloadsSection(
+enum class DownloadsSection(
     val titleResId: Int,
     val icon: ImageVector,
 ) {
@@ -113,6 +113,7 @@ private enum class DownloadsSection(
 
 @Composable
 fun HomeDownloadsScreen(
+    section: DownloadsSection = DownloadsSection.Downloads,
     onBack: () -> Unit = {},
     onClickPlay: (String, Boolean) -> Unit,
     onTestGraphics: (String) -> Unit,
@@ -122,9 +123,6 @@ fun HomeDownloadsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val storageManagerState = rememberContainerStorageManagerUiState()
     val scope = rememberCoroutineScope()
-    var selectedSectionIndex by rememberSaveable { mutableIntStateOf(DownloadsSection.Storage.ordinal) }
-    val sections = remember { DownloadsSection.values().toList() }
-    val selectedSection = sections.getOrElse(selectedSectionIndex) { DownloadsSection.Downloads }
     var selectedLibraryItem by remember { mutableStateOf<LibraryItem?>(null) }
     var openGameRequestId by rememberSaveable { mutableIntStateOf(0) }
 
@@ -190,79 +188,48 @@ fun HomeDownloadsScreen(
                 .displayCutoutPadding(),
         ) {
             DownloadsHeader(
-                title = stringResource(selectedSection.titleResId),
+                title = stringResource(section.titleResId),
                 onBack = onBack,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
-            val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
-
-            if (isPortrait) {
-                // Portrait: horizontal tab row above the content
-                DownloadsTabRow(
-                    sections = sections,
-                    selectedSection = selectedSection,
-                    onSectionSelected = { selectedSectionIndex = it.ordinal },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                )
-            }
-
-            Row(
+            Surface(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 16.dp, vertical = if (isPortrait) 0.dp else 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = PluviaTheme.colors.surfacePanel.copy(alpha = 0.94f),
+                tonalElevation = 2.dp,
+                shadowElevation = 12.dp,
             ) {
-                if (!isPortrait) {
-                    DownloadsSidebar(
-                        sections = sections,
-                        selectedSection = selectedSection,
-                        onSectionSelected = { selectedSectionIndex = it.ordinal },
+                when (section) {
+                    DownloadsSection.Downloads -> DownloadsContent(
+                        state = state,
+                        onResumeDownload = viewModel::onResumeDownload,
+                        onPauseDownload = viewModel::onPauseDownload,
+                        onCancelDownload = viewModel::onCancelDownload,
+                        onPauseAll = viewModel::onPauseAll,
+                        onResumeAll = viewModel::onResumeAll,
+                        onCancelAll = viewModel::onCancelAll,
+                        onClearFinished = viewModel::onClearFinished,
+                        onOpenGame = { item ->
+                            openGame(item.gameSource, item.appId, item.gameName, item.iconUrl)
+                        },
                         modifier = Modifier
-                            .width(96.dp)
-                            .fillMaxHeight(),
+                            .fillMaxSize()
+                            .padding(20.dp),
                     )
-                }
 
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    shape = RoundedCornerShape(24.dp),
-                    color = PluviaTheme.colors.surfacePanel.copy(alpha = 0.94f),
-                    tonalElevation = 2.dp,
-                    shadowElevation = 12.dp,
-                ) {
-                    when (selectedSection) {
-                        DownloadsSection.Downloads -> DownloadsContent(
-                            state = state,
-                            onResumeDownload = viewModel::onResumeDownload,
-                            onPauseDownload = viewModel::onPauseDownload,
-                            onCancelDownload = viewModel::onCancelDownload,
-                            onPauseAll = viewModel::onPauseAll,
-                            onResumeAll = viewModel::onResumeAll,
-                            onCancelAll = viewModel::onCancelAll,
-                            onClearFinished = viewModel::onClearFinished,
-                            onOpenGame = { item ->
-                                openGame(item.gameSource, item.appId, item.gameName, item.iconUrl)
-                            },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                        )
-
-                        DownloadsSection.Storage -> ContainerStorageManagerContent(
-                            state = storageManagerState,
-                            onOpenGame = { gameSource, appId, name, iconUrl ->
-                                openGame(gameSource, appId.removePrefix("${gameSource.name}_"), name, iconUrl)
-                            },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                        )
-                    }
+                    DownloadsSection.Storage -> ContainerStorageManagerContent(
+                        state = storageManagerState,
+                        onOpenGame = { gameSource, appId, name, iconUrl ->
+                            openGame(gameSource, appId.removePrefix("${gameSource.name}_"), name, iconUrl)
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp),
+                    )
                 }
             }
         }

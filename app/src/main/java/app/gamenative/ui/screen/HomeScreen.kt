@@ -21,6 +21,7 @@ import app.gamenative.ui.enums.HomeDestination
 import app.gamenative.enums.AppTheme
 import app.gamenative.ui.model.HomeViewModel
 import app.gamenative.ui.screen.downloads.HomeDownloadsScreen
+import app.gamenative.ui.screen.downloads.DownloadsSection
 import app.gamenative.ui.screen.library.HomeLibraryScreen
 import app.gamenative.ui.screen.settings.SettingsScreen
 import app.gamenative.ui.theme.PluviaTheme
@@ -62,6 +63,7 @@ fun HomeScreen(
             onLogout = onLogout,
             onGoOnline = onGoOnline,
             onDownloadsClick = { viewModel.onDestination(HomeDestination.Downloads) },
+            onStorageClick = { viewModel.onDestination(HomeDestination.Storage) },
             isOffline = isOffline,
         )
 
@@ -72,6 +74,22 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             HomeDownloadsScreen(
+                section = DownloadsSection.Downloads,
+                onBack = { viewModel.onDestination(HomeDestination.Library) },
+                onClickPlay = onClickPlay,
+                onTestGraphics = onTestGraphics,
+                onPlayWithDiagnostics = onPlayWithDiagnostics,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = homeState.currentDestination == HomeDestination.Storage,
+            enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            HomeDownloadsScreen(
+                section = DownloadsSection.Storage,
                 onBack = { viewModel.onDestination(HomeDestination.Library) },
                 onClickPlay = onClickPlay,
                 onTestGraphics = onTestGraphics,

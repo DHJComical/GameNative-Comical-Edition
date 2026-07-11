@@ -125,6 +125,7 @@ fun HomeLibraryScreen(
     onLogout: () -> Unit,
     onGoOnline: () -> Unit,
     onDownloadsClick: () -> Unit = {},
+    onStorageClick: () -> Unit = {},
     isOffline: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -147,6 +148,7 @@ fun HomeLibraryScreen(
         onLogout = onLogout,
         onGoOnline = onGoOnline,
         onDownloadsClick = onDownloadsClick,
+        onStorageClick = onStorageClick,
         onSourceToggle = viewModel::onSourceToggle,
         onAddCustomGameFolder = viewModel::addCustomGameFolder,
         onSortOptionChanged = viewModel::onSortOptionChanged,
@@ -185,6 +187,7 @@ private fun LibraryScreenContent(
     onLogout: () -> Unit,
     onGoOnline: () -> Unit,
     onDownloadsClick: () -> Unit = {},
+    onStorageClick: () -> Unit = {},
     onSourceToggle: (GameSource) -> Unit,
     onAddCustomGameFolder: (String) -> Unit,
     onSortOptionChanged: (SortOption) -> Unit,
@@ -1140,6 +1143,7 @@ private fun LibraryScreenContent(
                 onDismiss = { isSystemMenuOpen = false },
                 onNavigateRoute = onNavigateRoute,
                 onDownloadsClick = onDownloadsClick,
+                onStorageClick = onStorageClick,
                 onLogout = onLogout,
                 onGoOnline = onGoOnline,
                 isOffline = isOffline,
