@@ -114,8 +114,7 @@ android {
         }
 
         proguardFiles(
-            // getDefaultProguardFile("proguard-android-optimize.txt"),
-            getDefaultProguardFile("proguard-android.txt"),
+            getDefaultProguardFile("proguard-android-optimize.txt"),
             "proguard-rules.pro",
         )
     }
@@ -165,7 +164,6 @@ android {
         debug {
             isDebuggable = true
             isMinifyEnabled = false
-            isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
