@@ -20,7 +20,7 @@ class NotificationHelper @Inject constructor(@ApplicationContext private val con
 
     companion object {
         private const val CHANNEL_ID = "pluvia_foreground_service"
-        private const val CHANNEL_NAME = "GameNative Foreground Service"
+        private const val CHANNEL_NAME = "Game Native CE Foreground Service"
         private const val GROUP_KEY = "app.gamenative.services"
 
         const val NOTIFICATION_ID_STEAM = 1
@@ -60,7 +60,7 @@ class NotificationHelper @Inject constructor(@ApplicationContext private val con
             CHANNEL_NAME,
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Allows to display GameNative foreground notifications"
+            description = "Allows Game Native CE to display foreground notifications"
             setShowBadge(false)
         }
 
