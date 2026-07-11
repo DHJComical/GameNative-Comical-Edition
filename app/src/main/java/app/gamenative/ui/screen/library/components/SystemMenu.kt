@@ -132,7 +132,7 @@ private fun SystemMenuItem(
     Box(
         modifier = modifier
             .scale(scale)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(backgroundColor)
             .focusRequester(focusRequester)
             .selectable(
@@ -141,21 +141,21 @@ private fun SystemMenuItem(
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = contentColor,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(22.dp),
             )
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = contentColor,
                 fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Normal,
             )
@@ -204,18 +204,18 @@ private fun StatusOption(
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(10.dp)
+                .size(8.dp)
                 .background(statusColor, CircleShape),
         )
         Text(
             text = text,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = if (isFocused) {
                 MaterialTheme.colorScheme.onPrimaryContainer
             } else {
@@ -229,7 +229,7 @@ private fun StatusOption(
                 imageVector = Icons.Default.Check,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
             )
         }
     }
@@ -553,13 +553,13 @@ fun SystemMenu(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Menu items
                     Column(
@@ -603,13 +603,13 @@ fun SystemMenu(
                             onClick = { showSupporters = true },
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         if (isOffline || !SteamService.isLoggedIn) {
                             val goOnlineLabelRes = if (!SteamService.isLoggedIn) {
@@ -645,14 +645,6 @@ fun SystemMenu(
                                 isDestructive = true,
                             )
                         }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
 
                         // GOG
                         SystemMenuItem(

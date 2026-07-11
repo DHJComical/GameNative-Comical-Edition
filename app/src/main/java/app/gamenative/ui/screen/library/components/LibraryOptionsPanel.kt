@@ -176,11 +176,11 @@ fun LibraryOptionsPanel(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(vertical = 12.dp)
+                            .padding(vertical = 8.dp)
                     ) {
                         GameStatsKey(modifier = Modifier.padding(horizontal = 8.dp))
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.options_sort_by))
                         Column(
@@ -202,7 +202,7 @@ fun LibraryOptionsPanel(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.library_app_type))
                         Column(
@@ -231,7 +231,7 @@ fun LibraryOptionsPanel(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.library_app_status))
                         Column(
@@ -264,7 +264,7 @@ fun LibraryOptionsPanel(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.library_layout_title))
                         Column(
@@ -304,7 +304,7 @@ fun LibraryOptionsPanel(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
             }

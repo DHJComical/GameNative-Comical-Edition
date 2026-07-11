@@ -146,7 +146,7 @@ fun OptionListItem(
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -159,7 +159,7 @@ fun OptionListItem(
                     tint = style.contentColor,
                     modifier = Modifier.size(22.dp)
                 )
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(12.dp))
             }
 
             Text(
@@ -174,7 +174,7 @@ fun OptionListItem(
                     imageVector = Icons.Default.Check,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -221,7 +221,7 @@ fun OptionRadioItem(
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -229,20 +229,20 @@ fun OptionRadioItem(
         ) {
             Box(
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(18.dp)
                     .border(2.dp, radioIndicatorColor, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 if (selected) {
                     Box(
                         modifier = Modifier
-                            .size(10.dp)
+                            .size(8.dp)
                             .background(MaterialTheme.colorScheme.primary, CircleShape)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             if (icon != null) {
                 Icon(
@@ -251,7 +251,7 @@ fun OptionRadioItem(
                     tint = style.contentColor,
                     modifier = Modifier.size(20.dp)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
             }
 
             Text(
