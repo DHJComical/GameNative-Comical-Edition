@@ -75,6 +75,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 private const val CAROUSEL_TILT_ANGLE = 30.061367f
 private const val CAROUSEL_SPACING_RATIO = -0.11f
@@ -282,12 +283,18 @@ internal fun LibraryCarouselPane(
 
         scope.launch {
             onFocusedIndexChanged(targetIndex)
-            kotlinx.coroutines.delay(16)
-            listState.animateScrollToItem(targetIndex)
-            kotlinx.coroutines.delay(16)
+            delay(16)
             try {
                 firstCarouselItemFocusRequester?.requestFocus()
-            } catch (_: IllegalStateException) {
+            } catch (error: IllegalStateException) {
+                Timber.w(error, "Failed to focus carousel item before scrolling")
+            }
+            listState.animateScrollToItem(targetIndex)
+            delay(16)
+            try {
+                firstCarouselItemFocusRequester?.requestFocus()
+            } catch (error: IllegalStateException) {
+                Timber.w(error, "Failed to focus carousel item after scrolling")
             }
         }
     }
