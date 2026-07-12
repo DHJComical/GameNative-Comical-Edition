@@ -38,7 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -63,6 +63,33 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import timber.log.Timber
+
+internal fun shouldBlockLibraryInput(skeletonAlpha: Float): Boolean = skeletonAlpha > 0f
+
+@Composable
+internal fun LibraryInputBlocker(
+    alpha: Float,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    if (!shouldBlockLibraryInput(alpha)) {
+        return
+    }
+
+    Box(
+        modifier = modifier
+            .alpha(alpha)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                }
+            },
+    ) {
+        content()
+    }
+}
 
 /**
  * Calculates the installed games count based on the current filter state.
@@ -318,33 +345,29 @@ internal fun LibraryListPane(
             }
 
             val skeletonListState = remember { LazyGridState() }
-            if (skeletonAlpha > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(skeletonAlpha)
-                        .pointerInteropFilter { false },
+            LibraryInputBlocker(
+                alpha = skeletonAlpha,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                LazyVerticalGrid(
+                    columns = columnType,
+                    state = skeletonListState,
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                    contentPadding = PaddingValues(
+                        top = 80.dp,
+                        start = horizontalPadding,
+                        end = horizontalPadding,
+                        bottom = 72.dp,
+                    ),
                 ) {
-                    LazyVerticalGrid(
-                        columns = columnType,
-                        state = skeletonListState,
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                        contentPadding = PaddingValues(
-                            top = 80.dp,
-                            start = horizontalPadding,
-                            end = horizontalPadding,
-                            bottom = 72.dp,
-                        ),
-                    ) {
-                        items(totalSkeletonCount) { index ->
-                            if (index > 0 && currentLayout == PaneType.LIST) {
-                                HorizontalDivider()
-                            }
-                            GameSkeletonLoader(
-                                paneType = currentLayout,
-                            )
+                    items(totalSkeletonCount) { index ->
+                        if (index > 0 && currentLayout == PaneType.LIST) {
+                            HorizontalDivider()
                         }
+                        GameSkeletonLoader(
+                            paneType = currentLayout,
+                        )
                     }
                 }
             }

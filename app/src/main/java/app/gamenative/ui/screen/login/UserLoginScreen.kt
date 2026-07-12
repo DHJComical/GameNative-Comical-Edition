@@ -639,20 +639,20 @@ private fun CredentialsForm(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .border(
-                                BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 shape = RoundedCornerShape(16.dp),
                             )
                             .padding(24.dp),
                     ) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(32.dp),
-                            color = Color.White,
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 3.dp,
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = stringResource(R.string.connecting_to_steam),
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -669,12 +669,15 @@ private fun CredentialsForm(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .border(
-                                BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                                 shape = RoundedCornerShape(16.dp),
                             )
                             .padding(24.dp),
                     ) {
-                        Text(stringResource(R.string.no_connection_to_steam), color = Color.White)
+                        Text(
+                            text = stringResource(R.string.no_connection_to_steam),
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
                         Box(contentAlignment = Alignment.Center) {
                             OutlinedButton(
                                 onClick = onRetryConnection,

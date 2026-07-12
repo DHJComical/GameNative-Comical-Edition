@@ -174,7 +174,7 @@ fun EpicGameManagerDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black)
+                            .background(MaterialTheme.colorScheme.background)
                             .verticalScroll(scrollState),
                         horizontalAlignment = Alignment.Start,
                     ) {

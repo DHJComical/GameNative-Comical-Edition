@@ -161,7 +161,7 @@ fun WorkshopManagerDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black)
+                    .background(MaterialTheme.colorScheme.background)
                     .verticalScroll(scrollState),
                 horizontalAlignment = Alignment.Start,
             ) {
@@ -282,7 +282,7 @@ fun WorkshopManagerDialog(
                                     Text(
                                         text = "Loading subscribed mods...",
                                         modifier = Modifier.padding(top = 16.dp),
-                                        color = Color.White.copy(alpha = 0.7f)
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -311,7 +311,7 @@ fun WorkshopManagerDialog(
                             ) {
                                 Text(
                                     text = "No subscribed workshop mods found for this game.",
-                                    color = Color.White.copy(alpha = 0.7f)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -501,7 +501,7 @@ fun WorkshopManagerDialog(
                         Text(
                             modifier = Modifier.weight(0.5f),
                             text = "$selectedCount of ${workshopItems.size} mods selected$sizeText",
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Button(
                             onClick = {

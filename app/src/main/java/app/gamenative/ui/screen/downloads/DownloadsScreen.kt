@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -73,6 +74,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -265,7 +267,7 @@ private fun DownloadsHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        BackButton(onClick = onBack)
+        DownloadsBackButton(onClick = onBack)
 
         Text(
             text = title,
@@ -619,7 +621,7 @@ private fun DownloadsToolbarButton(
 }
 
 @Composable
-private fun BackButton(
+internal fun DownloadsBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -654,10 +656,10 @@ private fun BackButton(
                     Modifier.border(1.dp, PluviaTheme.colors.borderDefault.copy(alpha = 0.3f), CircleShape)
                 }
             )
-            .selectable(
-                selected = isFocused,
+            .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -665,7 +667,7 @@ private fun BackButton(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
             contentDescription = stringResource(R.string.back),
-            tint = if (isFocused) PluviaTheme.colors.accentPurple else Color.White.copy(alpha = 0.8f),
+            tint = if (isFocused) PluviaTheme.colors.accentPurple else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp),
         )
     }
@@ -925,7 +927,7 @@ private fun DownloadItemCard(
 }
 
 @Composable
-private fun GameArtworkButton(
+internal fun GameArtworkButton(
     imageUrl: String,
     contentDescription: String,
     placeholderIcon: ImageVector,
@@ -956,10 +958,10 @@ private fun GameArtworkButton(
                 },
                 shape = RoundedCornerShape(10.dp),
             )
-            .selectable(
-                selected = isFocused,
+            .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -1067,7 +1069,7 @@ private fun statusContentColor(status: DownloadItemStatus): Color = when (status
 }
 
 @Composable
-private fun DownloadActionButton(
+internal fun DownloadActionButton(
     imageVector: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
@@ -1106,10 +1108,10 @@ private fun DownloadActionButton(
                 },
                 shape = CircleShape,
             )
-            .selectable(
-                selected = isFocused,
+            .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,

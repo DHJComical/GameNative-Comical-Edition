@@ -2,6 +2,7 @@ package app.gamenative.ui.component.dialog
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -52,10 +53,6 @@ import app.gamenative.data.TouchGestureConfig.Companion.ZOOM_SCROLL_WHEEL
 import app.gamenative.ui.component.settings.SettingsListDropdown
 import app.gamenative.ui.theme.settingsTileColors
 import app.gamenative.ui.theme.settingsTileColorsAlt
-import app.gamenative.ui.theme.PluviaBackground
-import app.gamenative.ui.theme.PluviaBorder
-import app.gamenative.ui.theme.PluviaSurface
-import app.gamenative.ui.theme.PluviaSurfaceElevated
 import com.alorma.compose.settings.ui.SettingsSwitch
 import com.winlator.inputcontrols.Binding
 
@@ -85,7 +82,7 @@ fun TouchGestureSettingsDialog(
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = PluviaBackground,
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
@@ -451,8 +448,8 @@ private fun GestureBlock(content: @Composable ColumnScope.() -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 6.dp),
         shape = RoundedCornerShape(12.dp),
-        color = PluviaBackground,
-        border = androidx.compose.foundation.BorderStroke(1.dp, PluviaBorder.copy(alpha = 0.55f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -519,8 +516,8 @@ private fun MouseHoldBehaviorPicker(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 1.dp),
         shape = RoundedCornerShape(10.dp),
-        color = PluviaSurfaceElevated,
-        border = androidx.compose.foundation.BorderStroke(1.dp, PluviaBorder.copy(alpha = 0.5f)),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -779,8 +776,8 @@ private fun TapHoldActionPicker(
             .padding(horizontal = 12.dp, vertical = 1.dp)
             .clickable { showDialog = true },
         shape = RoundedCornerShape(10.dp),
-        color = PluviaSurfaceElevated,
-        border = androidx.compose.foundation.BorderStroke(1.dp, PluviaBorder.copy(alpha = 0.5f)),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -807,7 +804,7 @@ private fun TapHoldActionPicker(
         val categories = buildActionCategories()
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            containerColor = PluviaBackground,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = { Text(stringResource(R.string.gesture_action_label)) },
             text = {
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
@@ -831,7 +828,7 @@ private fun TapHoldActionPicker(
                                         showDialog = false
                                     },
                                 color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                else PluviaSurface,
+                                else MaterialTheme.colorScheme.surface,
                             ) {
                                 Text(
                                     text = actionLabel,
@@ -883,8 +880,8 @@ private fun PanActionPicker(
             .padding(horizontal = 12.dp, vertical = 1.dp)
             .clickable { showDialog = true },
         shape = RoundedCornerShape(10.dp),
-        color = PluviaSurfaceElevated,
-        border = androidx.compose.foundation.BorderStroke(1.dp, PluviaBorder.copy(alpha = 0.5f)),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -910,7 +907,7 @@ private fun PanActionPicker(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            containerColor = PluviaBackground,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = { Text(stringResource(R.string.gesture_action_label)) },
             text = {
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
@@ -923,7 +920,11 @@ private fun PanActionPicker(
                                     onActionSelected(action)
                                     showDialog = false
                                 },
-                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else PluviaSurface,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
                         ) {
                             Text(
                                 text = panActionLabel(action),
