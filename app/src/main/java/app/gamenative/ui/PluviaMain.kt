@@ -789,7 +789,7 @@ fun PluviaMain(
         DialogType.SUPPORT -> {
             onConfirmClick = {
                 uriHandler.openUri(Constants.Misc.KO_FI_LINK)
-                PrefManager.tipped = true
+                PrefManager.recordThankYouDialogSupport()
                 msgDialogState = MessageDialogState(visible = false)
             }
             onDismissRequest = {
@@ -1349,7 +1349,12 @@ fun PluviaMain(
                                     message = context.getString(R.string.main_recent_crash_message),
                                     confirmBtnText = context.getString(R.string.ok),
                                 )
-                            } else if (!(PrefManager.tipped || BuildConfig.GOLD)) {
+                            } else if (
+                                shouldShowThankYouDialog(
+                                    showThankYouDialog = PrefManager.showThankYouDialog,
+                                    isGoldBuild = BuildConfig.GOLD,
+                                )
+                            ) {
                                 viewModel.setAnnoyingDialogShown(true)
                                 msgDialogState = MessageDialogState(
                                     visible = true,
@@ -1549,6 +1554,9 @@ fun PluviaMain(
         }
     }
 }
+
+internal fun shouldShowThankYouDialog(showThankYouDialog: Boolean, isGoldBuild: Boolean): Boolean =
+    showThankYouDialog && !isGoldBuild
 
 fun preLaunchApp(
     context: Context,

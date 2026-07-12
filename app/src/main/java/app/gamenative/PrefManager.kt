@@ -1,8 +1,10 @@
 package app.gamenative
 
 import android.content.Context
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.byteArrayPreferencesKey
@@ -11,6 +13,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.gamenative.data.GameSource
@@ -36,6 +39,43 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 
+internal val tippedPreferenceKey = booleanPreferencesKey("tipped")
+internal val showThankYouDialogPreferenceKey = booleanPreferencesKey("show_thank_you_dialog")
+internal val thankYouDialogPreferenceMigratedKey =
+    booleanPreferencesKey("thank_you_dialog_preference_migrated")
+
+@Suppress("UNCHECKED_CAST")
+private fun copyPreferenceEntry(
+    target: MutablePreferences,
+    key: Preferences.Key<*>,
+    value: Any,
+) {
+    target[key as Preferences.Key<Any>] = value
+}
+
+internal class ThankYouDialogPreferenceMigration : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        currentData[thankYouDialogPreferenceMigratedKey] != true
+
+    override suspend fun migrate(currentData: Preferences): Preferences =
+        mutablePreferencesOf().apply {
+            currentData.asMap().forEach { (key, value) ->
+                copyPreferenceEntry(this, key, value)
+            }
+            if (showThankYouDialogPreferenceKey !in currentData) {
+                this[showThankYouDialogPreferenceKey] = currentData[tippedPreferenceKey] != true
+            }
+            this[thankYouDialogPreferenceMigratedKey] = true
+        }
+
+    override suspend fun cleanUp() = Unit
+}
+
+internal fun applyThankYouDialogSupportConfirmation(preferences: MutablePreferences) {
+    preferences[tippedPreferenceKey] = true
+    preferences[showThankYouDialogPreferenceKey] = false
+}
+
 /**
  * A universal Preference Manager that can be used anywhere within gamenative.
  * Note: King of ugly though.
@@ -48,6 +88,7 @@ object PrefManager {
             Timber.e("Preferences (somehow got) corrupted, resetting.")
             emptyPreferences()
         },
+        produceMigrations = { listOf(ThankYouDialogPreferenceMigration()) },
     )
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -930,15 +971,26 @@ object PrefManager {
             setPref(ALLOWED_ORIENTATION, Orientation.toInt(value))
         }
 
-    private val TIPPED = booleanPreferencesKey("tipped")
     var tipped: Boolean
         get() {
-            val value = getPref(TIPPED, false)
+            val value = getPref(tippedPreferenceKey, false)
             return value
         }
         set(value) {
-            setPref(TIPPED, value)
+            setPref(tippedPreferenceKey, value)
         }
+
+    var showThankYouDialog: Boolean
+        get() = getPref(showThankYouDialogPreferenceKey, true)
+        set(value) {
+            setPref(showThankYouDialogPreferenceKey, value)
+        }
+
+    fun recordThankYouDialogSupport() {
+        scope.launch {
+            dataStore.edit(::applyThankYouDialogSupportConfirmation)
+        }
+    }
 
     private val APP_THEME = intPreferencesKey("app_theme")
     var appTheme: AppTheme

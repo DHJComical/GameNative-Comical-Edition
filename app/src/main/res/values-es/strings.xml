@@ -973,8 +973,8 @@
     <string name="settings_info_title">Información</string>
     <string name="settings_info_send_tip_title">Enviar propina</string>
     <string name="settings_info_send_tip_subtitle">Contribuye al desarrollo continuo.</string>
-    <string name="settings_info_ask_tip_title">Pedir propina al inicio</string>
-    <string name="settings_info_ask_tip_subtitle">Evita que aparezca el mensaje de propina.</string>
+    <string name="settings_info_show_thank_you_dialog_title">Mostrar el diálogo «Gracias por usar GameNative»</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Mostrar un mensaje de apoyo al iniciar GameNative</string>
     <string name="settings_info_source_title">Código fuente</string>
     <string name="settings_info_source_subtitle">Ve el código fuente de este proyecto.</string>
     <string name="settings_info_libraries_title">Librerías utilizadas</string>

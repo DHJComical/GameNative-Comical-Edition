@@ -966,8 +966,8 @@
     <string name="settings_info_title">정보</string>
     <string name="settings_info_send_tip_title">팁 보내기</string>
     <string name="settings_info_send_tip_subtitle">지속적인 개발에 기여</string>
-    <string name="settings_info_ask_tip_title">시작 시 팁 요청</string>
-    <string name="settings_info_ask_tip_subtitle">시작 시 팁 메시지가 나타나지 않도록 중지</string>
+    <string name="settings_info_show_thank_you_dialog_title">"GameNative를 사용해 주셔서 감사합니다" 대화상자 표시</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">GameNative 시작 시 후원 안내 메시지 표시</string>
     <string name="settings_info_source_title">소스 코드</string>
     <string name="settings_info_source_subtitle">이 프로젝트의 소스 코드 보기</string>
     <string name="settings_info_libraries_title">사용된 라이브러리</string>

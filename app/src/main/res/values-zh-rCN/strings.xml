@@ -950,8 +950,8 @@
     <string name="settings_info_title">信息</string>
     <string name="settings_info_send_tip_title">捐款支持</string>
     <string name="settings_info_send_tip_subtitle">为持续的应用程序开发贡献力量</string>
-    <string name="settings_info_ask_tip_title">启动时显示捐款信息</string>
-    <string name="settings_info_ask_tip_subtitle">停止显示捐款信息</string>
+    <string name="settings_info_show_thank_you_dialog_title">显示“感谢您使用 GameNative”弹窗</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">启动 GameNative 时显示支持提示</string>
     <string name="settings_info_source_title">源代码</string>
     <string name="settings_info_source_subtitle">查看此项目的源代码</string>
     <string name="settings_info_libraries_title">使用的库</string>

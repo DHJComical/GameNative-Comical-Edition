@@ -974,8 +974,8 @@
     <string name="settings_info_title">Informacje</string>
     <string name="settings_info_send_tip_title">Wyślij napiwek</string>
     <string name="settings_info_send_tip_subtitle">Wesprzyj ciągły rozwój</string>
-    <string name="settings_info_ask_tip_title">Pytaj o napiwek przy uruchomieniu</string>
-    <string name="settings_info_ask_tip_subtitle">Zatrzymuje wyświetlanie wiadomości o napiwku</string>
+    <string name="settings_info_show_thank_you_dialog_title">Pokaż okno „Dziękujemy za korzystanie z GameNative”</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Wyświetlaj prośbę o wsparcie przy uruchamianiu GameNative</string>
     <string name="settings_info_source_title">Kod źródłowy</string>
     <string name="settings_info_source_subtitle">Zobacz kod źródłowy tego projektu</string>
     <string name="settings_info_libraries_title">Użyte biblioteki</string>

@@ -966,8 +966,8 @@
 	<string name="settings_info_title">Informații</string>
 	<string name="settings_info_send_tip_title">Trimite un tip</string>
 	<string name="settings_info_send_tip_subtitle">Contribuie la dezvoltarea continuă</string>
-	<string name="settings_info_ask_tip_title">Cere tip la pornire</string>
-	<string name="settings_info_ask_tip_subtitle">Oprește afișarea mesajului de tip</string>
+	<string name="settings_info_show_thank_you_dialog_title">Afișează dialogul „Mulțumim că folosești GameNative”</string>
+	<string name="settings_info_show_thank_you_dialog_subtitle">Afișează un mesaj de susținere la pornirea GameNative</string>
 	<string name="settings_info_source_title">Cod sursă</string>
 	<string name="settings_info_source_subtitle">Vezi codul sursă al acestui proiect</string>
 	<string name="settings_info_libraries_title">Biblioteci utilizate</string>

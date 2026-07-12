@@ -957,8 +957,8 @@
     <string name="settings_info_title">Info</string>
     <string name="settings_info_send_tip_title">Invia mancia</string>
     <string name="settings_info_send_tip_subtitle">Contribuisci allo sviluppo in corso</string>
-    <string name="settings_info_ask_tip_title">Chiedi mancia all\'avvio</string>
-    <string name="settings_info_ask_tip_subtitle">Impedisce la comparsa del messaggio mancia</string>
+    <string name="settings_info_show_thank_you_dialog_title">Mostra la finestra "Grazie per aver usato GameNative"</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Mostra un messaggio di supporto all\'avvio di GameNative</string>
     <string name="settings_info_source_title">Codice sorgente</string>
     <string name="settings_info_source_subtitle">Visualizza il codice sorgente di questo progetto</string>
     <string name="settings_info_libraries_title">Librerie Usate</string>

@@ -787,8 +787,8 @@
     <string name="settings_info_title">Informações</string>
     <string name="settings_info_send_tip_title">Enviar gorjeta</string>
     <string name="settings_info_send_tip_subtitle">Contribuir para o desenvolvimento contínuo</string>
-    <string name="settings_info_ask_tip_title">Pedir gorjeta na inicialização</string>
-    <string name="settings_info_ask_tip_subtitle">Impede que a mensagem de gorjeta apareça</string>
+    <string name="settings_info_show_thank_you_dialog_title">Mostrar a janela "Obrigado por usar o GameNative"</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Mostrar uma mensagem de apoio ao iniciar o GameNative</string>
     <string name="settings_info_source_title">Código-fonte</string>
     <string name="settings_info_source_subtitle">Ver o código-fonte deste projeto</string>
     <string name="settings_info_libraries_title">Bibliotecas utilizadas</string>

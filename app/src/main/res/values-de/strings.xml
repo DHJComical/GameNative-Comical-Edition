@@ -930,8 +930,8 @@
     <string name="settings_info_title">Info</string>
     <string name="settings_info_send_tip_title">Trinkgeld senden</string>
     <string name="settings_info_send_tip_subtitle">Unterstütze die Weiterentwicklung</string>
-    <string name="settings_info_ask_tip_title">Nach Start Trinkgeld erfragen</string>
-    <string name="settings_info_ask_tip_subtitle">Blendet die Trinkgeld-Frage aus</string>
+    <string name="settings_info_show_thank_you_dialog_title">Dialog „Danke, dass du GameNative nutzt“ anzeigen</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Beim Start von GameNative einen Unterstützungshinweis anzeigen</string>
     <string name="settings_info_source_title">Quellcode</string>
     <string name="settings_info_source_subtitle">Projektquellcode ansehen</string>
     <string name="settings_info_libraries_title">Verwendete Bibliotheken</string>

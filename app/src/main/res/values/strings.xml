@@ -965,8 +965,8 @@
     <string name="settings_info_title">Info</string>
     <string name="settings_info_send_tip_title">Send tip</string>
     <string name="settings_info_send_tip_subtitle">Contribute to ongoing development</string>
-    <string name="settings_info_ask_tip_title">Ask for tip on startup</string>
-    <string name="settings_info_ask_tip_subtitle">Stops the tip message from appearing</string>
+    <string name="settings_info_show_thank_you_dialog_title">Show the "Thank you for using GameNative" dialog</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Show a support message when GameNative starts</string>
     <string name="settings_info_source_title">Source code</string>
     <string name="settings_info_source_subtitle">View the source code of this project</string>
     <string name="settings_info_libraries_title">Libraries Used</string>

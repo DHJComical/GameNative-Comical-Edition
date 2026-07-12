@@ -960,8 +960,8 @@
     <string name="settings_info_title">Інформація</string>
     <string name="settings_info_send_tip_title">Підтримати розробників</string>
     <string name="settings_info_send_tip_subtitle">Сприяйте подальшому розвитку</string>
-    <string name="settings_info_ask_tip_title">Пропонувати підтримку розробників при запуску</string>
-    <string name="settings_info_ask_tip_subtitle">(ВИМК) Приховує повідомлення з пропозицією підтримки</string>
+    <string name="settings_info_show_thank_you_dialog_title">Показувати вікно «Дякуємо за користування GameNative»</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Показувати пропозицію підтримати проєкт під час запуску GameNative</string>
     <string name="settings_info_source_title">Вихідний код</string>
     <string name="settings_info_source_subtitle">Переглянути вихідний код застосунку</string>
     <string name="settings_info_libraries_title">Використані бібліотеки</string>

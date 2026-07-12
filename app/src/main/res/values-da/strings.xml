@@ -787,8 +787,8 @@
     <string name="settings_info_title">Info</string>
     <string name="settings_info_send_tip_title">Send drikkepenge</string>
     <string name="settings_info_send_tip_subtitle">Bidrag til løbende udvikling</string>
-    <string name="settings_info_ask_tip_title">Spørg efter drikkepenge ved opstart</string>
-    <string name="settings_info_ask_tip_subtitle">Forhindrer drikkepengebeskeden i at vises</string>
+    <string name="settings_info_show_thank_you_dialog_title">Vis dialogen "Tak for at bruge GameNative"</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Vis en besked om støtte, når GameNative starter</string>
     <string name="settings_info_source_title">Kildekode</string>
     <string name="settings_info_source_subtitle">Se kildekoden til dette projekt</string>
     <string name="settings_info_libraries_title">Anvendte biblioteker</string>

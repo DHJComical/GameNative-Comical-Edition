@@ -928,8 +928,8 @@ https://gamenative.app
     <string name="settings_emulation_title">Эмуляция</string>
     <string name="settings_emulation_wine_proton_manager_subtitle">Импортировать пользовательские версии Wine/Proton (только Bionic)</string>
     <string name="settings_emulation_wine_proton_manager_title">Менеджер Wine/Proton</string>
-    <string name="settings_info_ask_tip_subtitle">Предотвращает появление сообщения совета</string>
-    <string name="settings_info_ask_tip_title">Спросить совет при запуске</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Показывать предложение поддержать проект при запуске GameNative</string>
+    <string name="settings_info_show_thank_you_dialog_title">Показывать окно «Спасибо за использование GameNative»</string>
     <string name="settings_info_libraries_subtitle">Узнайте, какие технологии делают GameNative возможным</string>
     <string name="settings_info_libraries_title">Используемые библиотеки</string>
     <string name="settings_info_privacy_subtitle">Открывает ссылку на политику конфиденциальности GameNative</string>

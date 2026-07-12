@@ -952,8 +952,8 @@
     <string name="settings_info_title">資訊</string>
     <string name="settings_info_send_tip_title">捐款支持</string>
     <string name="settings_info_send_tip_subtitle">為持續的應用程式開發貢獻力量</string>
-    <string name="settings_info_ask_tip_title">啟動時顯示捐款訊息</string>
-    <string name="settings_info_ask_tip_subtitle">停止顯示捐款訊息</string>
+    <string name="settings_info_show_thank_you_dialog_title">顯示「感謝您使用 GameNative」彈窗</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">啟動 GameNative 時顯示支持提示</string>
     <string name="settings_info_source_title">原始碼</string>
     <string name="settings_info_source_subtitle">檢視此專案的原始碼</string>
     <string name="settings_info_libraries_title">使用的函式庫</string>

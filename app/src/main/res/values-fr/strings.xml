@@ -965,8 +965,8 @@
     <string name="settings_info_title">Informations</string>
     <string name="settings_info_send_tip_title">Envoyer un pourboire</string>
     <string name="settings_info_send_tip_subtitle">Contribuer au développement continu</string>
-    <string name="settings_info_ask_tip_title">Demander un pourboire au démarrage</string>
-    <string name="settings_info_ask_tip_subtitle">Empêche le message de pourboire d\'apparaître</string>
+    <string name="settings_info_show_thank_you_dialog_title">Afficher la boîte de dialogue « Merci d\'utiliser GameNative »</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Afficher un message de soutien au démarrage de GameNative</string>
     <string name="settings_info_source_title">Code source</string>
     <string name="settings_info_source_subtitle">Voir le code source de ce projet</string>
     <string name="settings_info_libraries_title">Bibliothèques utilisées</string>

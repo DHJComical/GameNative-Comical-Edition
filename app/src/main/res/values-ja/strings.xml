@@ -937,8 +937,8 @@
     <string name="settings_info_title">情報</string>
     <string name="settings_info_send_tip_title">チップを送信する</string>
     <string name="settings_info_send_tip_subtitle">継続的な開発に貢献する</string>
-    <string name="settings_info_ask_tip_title">起動時にヒントを求める</string>
-    <string name="settings_info_ask_tip_subtitle">ヒントメッセージの表示を停止します</string>
+    <string name="settings_info_show_thank_you_dialog_title">「GameNative をご利用いただきありがとうございます」ダイアログを表示</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">GameNative の起動時にサポートの案内を表示します</string>
     <string name="settings_info_source_title">ソースコード</string>
     <string name="settings_info_source_subtitle">このプロジェクトのソースコードを表示する</string>
     <string name="settings_info_libraries_title">使用するライブラリ</string>
