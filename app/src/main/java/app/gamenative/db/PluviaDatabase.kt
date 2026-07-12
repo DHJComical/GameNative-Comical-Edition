@@ -12,7 +12,9 @@ import app.gamenative.data.SteamApp
 import app.gamenative.data.SteamFileHashCache
 import app.gamenative.data.SteamLicense
 import app.gamenative.data.CachedLicense
-import app.gamenative.data.DownloadingAppInfo
+import app.gamenative.data.StoreDownloadTask
+import app.gamenative.data.library.LibraryFileTransactionRecord
+import app.gamenative.data.library.LibraryDeletionRecord
 import app.gamenative.data.EncryptedAppTicket
 import app.gamenative.data.SteamUnlockedBranch
 import app.gamenative.data.GOGGame
@@ -24,6 +26,7 @@ import app.gamenative.db.converters.FriendConverter
 import app.gamenative.db.converters.LicenseConverter
 import app.gamenative.db.converters.UserFileInfoListConverter
 import app.gamenative.db.converters.GOGConverter
+import app.gamenative.db.converters.StoreDownloadTaskConverter
 import app.gamenative.db.dao.ChangeNumbersDao
 import app.gamenative.db.dao.FileChangeListsDao
 import app.gamenative.db.dao.LibraryPlayHistoryDao
@@ -35,6 +38,9 @@ import app.gamenative.db.dao.CachedLicenseDao
 import app.gamenative.db.dao.DownloadingAppInfoDao
 import app.gamenative.db.dao.EncryptedAppTicketDao
 import app.gamenative.db.dao.SteamUnlockedBranchDao
+import app.gamenative.db.dao.StoreDownloadTaskDao
+import app.gamenative.db.dao.LibraryFileTransactionDao
+import app.gamenative.db.dao.LibraryDeletionTransactionDao
 import app.gamenative.db.dao.GOGGameDao
 import app.gamenative.db.dao.EpicGameDao
 import app.gamenative.db.dao.AmazonGameDao
@@ -55,10 +61,12 @@ const val DATABASE_NAME = "pluvia.db"
         GOGGame::class,
         EpicGame::class,
         AmazonGame::class,
-        DownloadingAppInfo::class,
+        StoreDownloadTask::class,
+        LibraryFileTransactionRecord::class,
+        LibraryDeletionRecord::class,
         SteamUnlockedBranch::class,
     ],
-    version = 23,
+    version = 25,
     // For db migration, visit https://developer.android.com/training/data-storage/room/migrating-db-versions for more information
     exportSchema = true, // It is better to handle db changes carefully, as GN is getting much more users.
     autoMigrations = [
@@ -90,6 +98,7 @@ const val DATABASE_NAME = "pluvia.db"
     LicenseConverter::class,
     UserFileInfoListConverter::class,
     GOGConverter::class,
+    StoreDownloadTaskConverter::class,
 )
 abstract class PluviaDatabase : RoomDatabase() {
 
@@ -118,6 +127,12 @@ abstract class PluviaDatabase : RoomDatabase() {
     abstract fun amazonGameDao(): AmazonGameDao
 
     abstract fun downloadingAppInfoDao(): DownloadingAppInfoDao
+
+    abstract fun storeDownloadTaskDao(): StoreDownloadTaskDao
+
+    abstract fun libraryFileTransactionDao(): LibraryFileTransactionDao
+
+    abstract fun libraryDeletionTransactionDao(): LibraryDeletionTransactionDao
 
     abstract fun steamUnlockedBranchDao(): SteamUnlockedBranchDao
 }

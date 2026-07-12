@@ -677,7 +677,7 @@ class SteamAppScreen : BaseAppScreen() {
     }
 
     override fun supportsSaveTransfer(libraryItem: LibraryItem): Boolean {
-        return libraryItem.gameSource == app.gamenative.data.GameSource.STEAM
+        return libraryItem.gameSource == GameSource.STEAM
     }
 
     override suspend fun exportSaves(
@@ -1335,7 +1335,7 @@ class SteamAppScreen : BaseAppScreen() {
                 onGetDisplayInfo = { context ->
                     return@GameManagerDialog getGameDisplayInfo(context, libraryItem)
                 },
-                onInstall = { dlcAppIds, steamLibraryRoot ->
+                onInstall = { dlcAppIds, libraryId ->
                     hideGameManagerDialog(gameId)
 
                     val installedApp = SteamService.getInstalledApp(gameId)
@@ -1354,7 +1354,7 @@ class SteamAppScreen : BaseAppScreen() {
                             gameId,
                             dlcAppIds,
                             isUpdateOrVerify = false,
-                            steamLibraryRoot = steamLibraryRoot,
+                            libraryId = libraryId,
                         )
                     }
                 },

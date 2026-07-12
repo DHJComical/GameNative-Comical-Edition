@@ -8,12 +8,13 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.byteArrayPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.gamenative.data.GameSource
+import app.gamenative.data.library.LegacySteamLibraryPreferences
 import app.gamenative.enums.AppTheme
 import app.gamenative.ui.enums.AppFilter
 import app.gamenative.ui.enums.HomeDestination
@@ -1207,6 +1208,31 @@ object PrefManager {
         set(value) {
             setPref(DEFAULT_STEAM_LIBRARY_PATH, value)
         }
+
+    private val GAME_LIBRARY_SNAPSHOT = stringPreferencesKey("game_library_snapshot")
+
+    /** Atomically migrates or updates the single versioned game-library snapshot preference. */
+    internal suspend fun updateGameLibrarySnapshot(
+        transform: (snapshotJson: String?, legacy: LegacySteamLibraryPreferences) -> String,
+    ): String {
+        var result: String? = null
+        dataStore.edit { preferences ->
+            val legacyPaths = try {
+                Json.decodeFromString<Set<String>>(preferences[STEAM_LIBRARY_PATHS] ?: "[]")
+            } catch (exception: Exception) {
+                Timber.e(exception, "Failed to decode legacy Steam library paths")
+                throw exception
+            }
+            result = transform(
+                preferences[GAME_LIBRARY_SNAPSHOT],
+                LegacySteamLibraryPreferences(
+                    paths = legacyPaths,
+                    defaultPath = preferences[DEFAULT_STEAM_LIBRARY_PATH].orEmpty(),
+                ),
+            ).also { preferences[GAME_LIBRARY_SNAPSHOT] = it }
+        }
+        return checkNotNull(result) { "Game library preference transaction did not run" }
+    }
 
     private val FRONTEND_SYNC_DIR_STEAM = stringPreferencesKey("frontend_sync_dir_steam")
     private val FRONTEND_SYNC_DIR_EPIC = stringPreferencesKey("frontend_sync_dir_epic")

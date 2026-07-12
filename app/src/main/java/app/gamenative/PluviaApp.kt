@@ -7,8 +7,10 @@ import androidx.compose.runtime.setValue
 import androidx.navigation.NavController
 import app.gamenative.db.dao.AmazonGameDao
 import app.gamenative.db.dao.GOGGameDao
+import app.gamenative.data.library.GameLibraryOperations
 import app.gamenative.events.EventDispatcher
 import app.gamenative.service.ActiveGameRegistry
+import app.gamenative.service.GameRuntimeLifecycleRegistryImpl
 import app.gamenative.service.DownloadService
 import app.gamenative.service.SteamService
 import app.gamenative.sync.FrontendSyncManager
@@ -38,6 +40,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 typealias NavChangedListener = NavController.OnDestinationChangedListener
 
@@ -46,6 +51,7 @@ class PluviaApp : SplitCompatApplication() {
 
     @Inject lateinit var gogGameDao: GOGGameDao
     @Inject lateinit var amazonGameDao: AmazonGameDao
+    @Inject lateinit var gameLibraryOperations: GameLibraryOperations
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -83,6 +89,20 @@ class PluviaApp : SplitCompatApplication() {
         DownloadService.populateDownloadService(this)
 
         migrateGogAmazonPaths()
+
+        appScope.launch {
+            runCatching { gameLibraryOperations.recoverMigrations() }
+                .onSuccess { recovery ->
+                    if (recovery.removedTransactions > 0 || recovery.pendingTransactionIds.isNotEmpty()) {
+                        Timber.i(
+                            "Library migration recovery removed=%d pending=%s",
+                            recovery.removedTransactions,
+                            recovery.pendingTransactionIds,
+                        )
+                    }
+                }
+                .onFailure { Timber.e(it, "Library migration startup recovery failed") }
+        }
 
         appScope.launch {
             ContainerMigrator.migrateLegacyContainersIfNeeded(
@@ -224,7 +244,32 @@ class PluviaApp : SplitCompatApplication() {
          * full environment teardown — shared by XServerScreen.exit() and
          * MainActivity.onDestroy fallback so both paths clean up identically
          */
+        private val runtimeTeardownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val runtimeTeardownMutex = Mutex()
+        private const val SETUP_TEARDOWN_TIMEOUT_MILLIS = 5_000L
+
+        /** Requests teardown and returns immediately without blocking the caller thread. */
         fun shutdownEnvironment() {
+            GameRuntimeLifecycleRegistryImpl.requestStop()
+            runtimeTeardownScope.launch { shutdownEnvironmentAndAwait() }
+        }
+
+        /** Completes runtime teardown without ever waiting on the caller thread. */
+        suspend fun shutdownEnvironmentAndAwait() = runtimeTeardownMutex.withLock {
+            val runtimeToken = GameRuntimeLifecycleRegistryImpl.requestStop()
+            if (runtimeToken != null) {
+                val finishedInTime = GameRuntimeLifecycleRegistryImpl.awaitSetupFinished(
+                    runtimeToken,
+                    SETUP_TEARDOWN_TIMEOUT_MILLIS,
+                )
+                if (!finishedInTime) {
+                    Timber.e("Runtime setup teardown timed out; remaining STOPPING until setup exits")
+                    GameRuntimeLifecycleRegistryImpl.awaitSetupFinished(
+                        runtimeToken,
+                        GameRuntimeLifecycleRegistryImpl.WAIT_FOREVER,
+                    )
+                }
+            }
             val env = xEnvironment
             Timber.i("shutdownEnvironment: env=%s", env != null)
 
@@ -233,20 +278,23 @@ class PluviaApp : SplitCompatApplication() {
                 .onFailure { Timber.e(it, "shutdownEnvironment: achievementWatcher.stop") }
             runCatching { SteamService.clearCachedAchievements() }
                 .onFailure { Timber.e(it, "shutdownEnvironment: clearCachedAchievements") }
-            runCatching { touchpadView?.releasePointerCapture() }
-                .onFailure { Timber.e(it, "shutdownEnvironment: releasePointerCapture") }
             runCatching { env?.stopEnvironmentComponents() }
                 .onFailure { Timber.e(it, "shutdownEnvironment: stopEnvironmentComponents") }
 
-            xEnvironment = null
-            inputControlsView = null
-            inputControlsManager = null
-            touchpadView = null
-            achievementWatcher = null
+            withContext(Dispatchers.Main.immediate) {
+                runCatching { touchpadView?.releasePointerCapture() }
+                    .onFailure { Timber.e(it, "shutdownEnvironment: releasePointerCapture") }
+                xEnvironment = null
+                inputControlsView = null
+                inputControlsManager = null
+                touchpadView = null
+                achievementWatcher = null
+                clearActiveSuspendState()
+            }
             ActiveGameRegistry.clear()
+            GameRuntimeLifecycleRegistryImpl.markStopped(runtimeToken)
             SteamService.keepAlive = false
             SteamService.clearPlayingConflict()
-            clearActiveSuspendState()
         }
 
         fun clearActiveSuspendState() {

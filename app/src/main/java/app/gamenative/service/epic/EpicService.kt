@@ -4,17 +4,28 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import app.gamenative.data.DownloadInfo
+import app.gamenative.data.DownloadStore
 import app.gamenative.data.EpicCredentials
 import app.gamenative.data.EpicGame
+import app.gamenative.data.GameSource
 import app.gamenative.data.LaunchInfo
 import app.gamenative.data.LibraryItem
 import app.gamenative.data.EpicGameToken
+import app.gamenative.data.StoreDownloadOperation
+import app.gamenative.data.StoreDownloadState
+import app.gamenative.data.StoreDownloadTask
+import app.gamenative.data.library.GameLibrary
+import app.gamenative.data.library.GameLibraryRepository
+import app.gamenative.data.library.storeLibraryLayout
+import app.gamenative.db.dao.StoreDownloadTaskDao
 import app.gamenative.utils.MarkerUtils
 import app.gamenative.enums.Marker
 import app.gamenative.events.AndroidEvent
 import app.gamenative.PluviaApp
+import app.gamenative.PrefManager
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.service.NotificationHelper
 import com.winlator.container.Container
@@ -32,6 +43,8 @@ import timber.log.Timber
  */
 @AndroidEntryPoint
 class EpicService : Service() {
+
+    private var taskRecoveryJob: Job? = null
 
     companion object {
         private var instance: EpicService? = null
@@ -189,39 +202,26 @@ class EpicService : Service() {
         fun hasPartialDownload(context: Context, appId: Int): Boolean {
             val game = getEpicGameOf(appId) ?: return false
             if (game.isInstalled) return false
-            val appName = game.appName.ifBlank { return false }
-            val installPath = EpicConstants.getGameInstallPath(context, appName)
-            return MarkerUtils.hasPartialInstall(installPath)
-        }
-
-        private fun getPartialInstallPaths(context: Context): Set<String> {
-            val roots = buildList {
-                add(EpicConstants.internalEpicGamesPath(context))
-                if (app.gamenative.PrefManager.externalStoragePath.isNotBlank()) {
-                    add(EpicConstants.externalEpicGamesPath())
-                }
-            }.distinct()
-
-            return roots.asSequence()
-                .flatMap { root -> MarkerUtils.findResumablePartialInstalls(root).asSequence() }
-                .toSet()
+            return runBlocking(Dispatchers.IO) {
+                val instance = getInstance() ?: return@runBlocking false
+                instance.findPartialInstallPath(game)?.let(MarkerUtils::hasPartialInstall) == true
+            }
         }
 
         suspend fun getPartialDownloads(): List<Int> {
             val instance = getInstance() ?: return emptyList()
-            val context = instance.applicationContext
-            val partialInstallPaths = getPartialInstallPaths(context)
+            val partialInstallPaths = instance.findPartialInstallPathsAndImportLegacy()
             if (partialInstallPaths.isEmpty()) return emptyList()
 
-            return instance.epicManager.getNonInstalledGames()
-                .asSequence()
-                .filter { game -> !instance.activeDownloads.containsKey(game.id) }
-                .filter { game ->
-                    val appName = game.appName.ifBlank { return@filter false }
-                    partialInstallPaths.contains(EpicConstants.getGameInstallPath(context, appName))
+            return buildList {
+                instance.epicManager.getNonInstalledGames().forEach { game ->
+                    if (instance.activeDownloads.containsKey(game.id) || game.appName.isBlank()) return@forEach
+                    val directoryName = EpicConstants.sanitizeGameDirectoryName(game.appName)
+                    val path = partialInstallPaths.firstOrNull { File(it).name == directoryName } ?: return@forEach
+                    instance.persistDiscoveredPartial(game, path)
+                    add(game.id)
                 }
-                .map { it.id }
-                .toList()
+            }
         }
 
         suspend fun deleteGame(context: Context, appId: Int): Result<Unit> {
@@ -237,21 +237,27 @@ class EpicService : Service() {
                     return Result.failure(Exception("Game not found: $appId"))
                 }
 
-                val path = if (game.installPath.isNotEmpty()) game.installPath else EpicConstants.getGameInstallPath(context, game.appName)
+                val path = instance.resolveExistingPath(game)
+                    ?: return Result.failure(Exception("No managed Epic installation found for appId: $appId"))
+                if (!instance.isRegisteredGamePath(path)) {
+                    return Result.failure(SecurityException("Epic install path is outside registered libraries: $path"))
+                }
                 if (File(path).exists()) {
                     Timber.tag("Epic").i("Deleting installation folder: $path")
                     val deleted = File(path).deleteRecursively()
-                    if (deleted) {
-                        Timber.tag("Epic").i("Successfully deleted installation folder")
-                    } else {
-                        Timber.tag("Epic").w("Failed to delete some files in installation folder")
+                    if (!deleted || File(path).exists()) {
+                        val error = IllegalStateException("Failed to delete Epic installation folder: $path")
+                        Timber.tag("Epic").e(error, "Epic database state was preserved")
+                        return Result.failure(error)
                     }
+                    Timber.tag("Epic").i("Successfully deleted installation folder")
                     MarkerUtils.removeMarker(path, Marker.DOWNLOAD_COMPLETE_MARKER)
                     MarkerUtils.removeMarker(path, Marker.DOWNLOAD_IN_PROGRESS_MARKER)
                 }
 
                 // Uninstall from database (keeps the entry but marks as not installed)
                 instance.epicManager.uninstall(appId)
+                instance.storeDownloadTaskDao.delete(DownloadStore.EPIC, game.appName)
 
                 // Delete container
                 // Use game.id (the auto-generated numeric Room DB primary key) to match the container
@@ -263,8 +269,8 @@ class EpicService : Service() {
                 }
 
                 // Trigger library refresh event
-                app.gamenative.PluviaApp.events.emitJava(
-                    app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged(appId, app.gamenative.data.GameSource.EPIC)
+                PluviaApp.events.emitJava(
+                    AndroidEvent.LibraryInstallStatusChanged(appId, GameSource.EPIC),
                 )
 
                 Timber.tag("Epic").i("Game uninstalled: $appId")
@@ -277,9 +283,16 @@ class EpicService : Service() {
 
         suspend fun cleanupDownload(context: Context, appId: Int) {
             withContext(Dispatchers.IO) {
-                getInstance()?.epicManager?.getGameById(appId)?.let { game ->
-                    val path = EpicConstants.getGameInstallPath(context, game.appName)
+                getInstance()?.let { instance ->
+                    val game = instance.epicManager.getGameById(appId) ?: return@let
+                    val path = instance.resolveExistingPath(game) ?: return@let
                     MarkerUtils.removeMarker(path, Marker.DOWNLOAD_IN_PROGRESS_MARKER)
+                    instance.storeDownloadTaskDao.updateState(
+                        DownloadStore.EPIC,
+                        game.appName,
+                        StoreDownloadState.PAUSED,
+                        System.currentTimeMillis(),
+                    )
                 }
             }
             getInstance()?.activeDownloads?.remove(appId)
@@ -335,11 +348,9 @@ class EpicService : Service() {
                 return MarkerUtils.hasMarker(game.installPath, Marker.DOWNLOAD_COMPLETE_MARKER)
             }
 
-            val installPath = game.installPath.takeIf { it.isNotEmpty() }
-                ?: game.appName.takeIf { it.isNotEmpty() }?.let {
-                    EpicConstants.getGameInstallPath(context, it)
-                }
-                ?: return false
+            val installPath = runBlocking(Dispatchers.IO) {
+                getInstance()?.findCompletedInstallPath(game)
+            } ?: return false
 
             val isDownloadComplete = MarkerUtils.hasMarker(installPath, Marker.DOWNLOAD_COMPLETE_MARKER)
             val isDownloadInProgress = MarkerUtils.hasMarker(installPath, Marker.DOWNLOAD_IN_PROGRESS_MARKER)
@@ -386,8 +397,10 @@ class EpicService : Service() {
         }
 
         suspend fun refreshLibrary(context: Context): Result<Int> {
-            return getInstance()?.epicManager?.refreshLibrary(context)
-                ?: Result.failure(Exception("Service not available"))
+            val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
+            val result = instance.epicManager.refreshLibrary(context)
+            if (result.isSuccess) instance.reconcileRegisteredInstallations()
+            return result
         }
 
         suspend fun fetchManifestSizes(context: Context, appId: Int): EpicManager.ManifestSizes {
@@ -395,18 +408,76 @@ class EpicService : Service() {
                 ?: EpicManager.ManifestSizes(installSize = 0L, downloadSize = 0L)
         }
 
-        fun downloadGame(context: Context, appId: Int, dlcGameIds: List<Int>, installPath: String, containerLanguage: String): Result<DownloadInfo> {
+        /** Starts or resumes an Epic download in a validated registered library. */
+        fun downloadGame(
+            context: Context,
+            appId: Int,
+            dlcGameIds: List<Int>,
+            libraryId: String,
+            containerLanguage: String,
+        ): Result<DownloadInfo> = startDownload(
+            context = context,
+            appId = appId,
+            dlcGameIds = dlcGameIds,
+            requestedLibraryId = libraryId,
+            containerLanguage = containerLanguage,
+            requiredResumeTask = null,
+        )
+
+        /** Resumes only from the exact validated location and parameters stored in the durable task. */
+        fun resumeDownload(context: Context, appId: Int): Result<DownloadInfo> {
+            val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
+            val game = runBlocking(Dispatchers.IO) { instance.epicManager.getGameById(appId) }
+                ?: return Result.failure(Exception("Game not found for appId: $appId"))
+            val task = runBlocking(Dispatchers.IO) {
+                instance.storeDownloadTaskDao.find(DownloadStore.EPIC, game.appName)
+            } ?: return Result.failure(Exception("No durable Epic download task for appId: $appId"))
+            return startDownload(
+                context = context,
+                appId = appId,
+                dlcGameIds = task.dlcAppIds,
+                requestedLibraryId = task.libraryId,
+                containerLanguage = task.language,
+                requiredResumeTask = task,
+            )
+        }
+
+        /** Shared launch path for new installs and exact durable-task recovery. */
+        private fun startDownload(
+            context: Context,
+            appId: Int,
+            dlcGameIds: List<Int>,
+            requestedLibraryId: String,
+            containerLanguage: String,
+            requiredResumeTask: StoreDownloadTask?,
+        ): Result<DownloadInfo> {
             val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
 
             val game = runBlocking { instance.epicManager.getGameById(appId) }
                 ?: return Result.failure(Exception("Game not found for appId: $appId"))
-            val gameId = game.id ?: return Result.failure(Exception("Game ID not found for appId: $appId"))
+            val gameId = game.id
 
-            // Check if already downloading
-            if (instance.activeDownloads.containsKey(appId)) {
+            // Do not overwrite a running task with PREPARING when the UI submits twice.
+            instance.activeDownloads[appId]?.let { activeDownload ->
                 Timber.tag("Epic").w("Download already in progress for $appId")
-                return Result.success(instance.activeDownloads[appId]!!)
+                return Result.success(activeDownload)
             }
+
+            val prepared = try {
+                runBlocking(Dispatchers.IO) {
+                    instance.prepareDownloadTask(
+                        game,
+                        requestedLibraryId,
+                        dlcGameIds,
+                        containerLanguage,
+                        requiredResumeTask,
+                    )
+                }
+            } catch (exception: Exception) {
+                Timber.tag("Epic").e(exception, "Failed to prepare managed Epic download")
+                return Result.failure(exception)
+            }
+            val installPath = prepared.installPath
 
             // Create DownloadInfo before launching coroutine to avoid race condition
             val downloadInfo = DownloadInfo(
@@ -428,6 +499,12 @@ class EpicService : Service() {
             // Start download in background
             val job = instance.scope.launch {
                 try {
+                    instance.storeDownloadTaskDao.updateState(
+                        DownloadStore.EPIC,
+                        game.appName,
+                        StoreDownloadState.RUNNING,
+                        System.currentTimeMillis(),
+                    )
                     val commonRedistDir = File(installPath, "_CommonRedist")
                     Timber.tag("Epic").i("Starting download for game: ${game.title}, gameId: ${game.id}")
 
@@ -440,11 +517,15 @@ class EpicService : Service() {
                         dlcGameIds,
                         commonRedistDir,
                     )
+                    currentCoroutineContext().ensureActive()
 
                     Timber.tag("Epic").d("Download result: ${if (result.isSuccess) "SUCCESS" else "FAILURE: ${result.exceptionOrNull()?.message}"}")
 
                     if (result.isSuccess) {
                         Timber.i("[Download] Completed successfully for game $gameId")
+
+                        instance.epicManager.updateGame(game.copy(isInstalled = true, installPath = installPath))
+                        instance.storeDownloadTaskDao.delete(DownloadStore.EPIC, game.appName)
 
                         // Download cloud saves so they're ready before first launch.
                         // Status message keeps isDownloading() true so Play stays hidden during sync.
@@ -476,18 +557,36 @@ class EpicService : Service() {
                     } else {
                         val error = result.exceptionOrNull()
                         Timber.e(error, "[Download] Failed for game $gameId")
+                        instance.storeDownloadTaskDao.updateState(
+                            DownloadStore.EPIC,
+                            game.appName,
+                            StoreDownloadState.FAILED,
+                            System.currentTimeMillis(),
+                        )
                         downloadInfo.setProgress(-1.0f)
                         downloadInfo.setActive(false)
 
                         SnackbarManager.show("Download failed: ${error?.message ?: "Unknown error"}")
                     }
                 } catch (e: CancellationException) {
+                    instance.storeDownloadTaskDao.updateState(
+                        DownloadStore.EPIC,
+                        game.appName,
+                        StoreDownloadState.PAUSED,
+                        System.currentTimeMillis(),
+                    )
                     downloadInfo.setPostInstallSyncing(false)
                     downloadInfo.updateStatusMessage(null)
                     PluviaApp.events.emit(AndroidEvent.PostInstallSyncStatusChanged(gameId, false))
                     throw e
                 } catch (e: Exception) {
                     Timber.e(e, "[Download] Exception for game $gameId")
+                    instance.storeDownloadTaskDao.updateState(
+                        DownloadStore.EPIC,
+                        game.appName,
+                        StoreDownloadState.FAILED,
+                        System.currentTimeMillis(),
+                    )
                     downloadInfo.setPostInstallSyncing(false)
                     downloadInfo.updateStatusMessage(null)
                     PluviaApp.events.emit(AndroidEvent.PostInstallSyncStatusChanged(gameId, false))
@@ -621,6 +720,12 @@ class EpicService : Service() {
     @Inject
     lateinit var epicOverlayManager: EpicOverlayManager
 
+    @Inject
+    lateinit var gameLibraryRepository: GameLibraryRepository
+
+    @Inject
+    lateinit var storeDownloadTaskDao: StoreDownloadTaskDao
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Track active downloads by GameNative Int ID
@@ -628,9 +733,179 @@ class EpicService : Service() {
 
     private val onEndProcess: (AndroidEvent.EndProcess) -> Unit = { stop() }
 
+    /** Resolves an exact game directory while preserving installed and resumable locations. */
+    private suspend fun prepareDownloadTask(
+        game: EpicGame,
+        requestedLibraryId: String,
+        dlcGameIds: List<Int>,
+        containerLanguage: String,
+        requiredResumeTask: StoreDownloadTask?,
+    ): StoreDownloadTask {
+        taskRecoveryJob?.join()
+        require(game.appName.isNotBlank()) { "Epic app name is required for installation" }
+        val existingTask = storeDownloadTaskDao.find(DownloadStore.EPIC, game.appName)
+        if (requiredResumeTask != null) {
+            require(existingTask == requiredResumeTask) { "Durable Epic task changed before resume" }
+        }
+        val installation = when {
+            existingTask != null -> gameLibraryRepository.resolveInstallation(GameSource.EPIC, existingTask.libraryId)
+            game.installPath.isNotBlank() -> installationForExistingPath(game.installPath)
+            else -> gameLibraryRepository.resolveInstallation(GameSource.EPIC, requestedLibraryId)
+        }
+        val installPath = when {
+            existingTask != null -> EpicDownloadTaskLocation.validate(
+                existingTask,
+                installation,
+                game.id,
+                game.appName,
+            ).also { taskPath ->
+                require(game.installPath.isBlank() || File(game.installPath).canonicalPath == taskPath) {
+                    "Epic database and durable task install paths do not match"
+                }
+            }
+            game.installPath.isNotBlank() -> game.installPath
+            else -> EpicConstants.getGameInstallPath(installation, game.appName)
+        }
+        require(EpicConstants.isDirectGamePath(installation.installRoot, installPath)) {
+            "Epic game path is not an exact child of the selected library: $installPath"
+        }
+        val expectedPath = EpicConstants.getGameInstallPath(installation, game.appName)
+        require(File(installPath).canonicalFile == File(expectedPath).canonicalFile) {
+            "Epic game path does not match its app name: $installPath"
+        }
+        val now = System.currentTimeMillis()
+        return StoreDownloadTask(
+            store = DownloadStore.EPIC,
+            gameKey = game.appName,
+            appId = game.id,
+            libraryId = installation.library.id,
+            libraryRoot = installation.library.rootPath,
+            installPath = installPath,
+            dlcAppIds = dlcGameIds,
+            language = containerLanguage,
+            operation = if (game.isInstalled) StoreDownloadOperation.UPDATE else StoreDownloadOperation.INSTALL,
+            state = StoreDownloadState.PREPARING,
+            createdAt = existingTask?.createdAt ?: now,
+            updatedAt = now,
+        ).also { storeDownloadTaskDao.upsert(it) }
+    }
+
+    /** Revalidates custom-library permission and returns the registered location owning [path]. */
+    private suspend fun installationForExistingPath(path: String) =
+        libraryForGamePath(path)?.let { gameLibraryRepository.resolveInstallation(GameSource.EPIC, it.id) }
+            ?: throw SecurityException("Epic path is outside registered libraries: $path")
+
+    /** Finds the Epic library whose install root directly owns [path]. */
+    private suspend fun libraryForGamePath(path: String): GameLibrary? {
+        val layout = storeLibraryLayout(GameSource.EPIC)
+        return gameLibraryRepository.getSnapshot().libraries
+            .asSequence()
+            .filter { it.source == GameSource.EPIC && !it.requiresConflictResolution }
+            .firstOrNull { EpicConstants.isDirectGamePath(layout.installRoot(it.rootPath), path) }
+    }
+
+    /** Returns a persisted or discovered partial path without silently changing its library. */
+    private suspend fun findPartialInstallPath(game: EpicGame): String? {
+        val task = storeDownloadTaskDao.find(DownloadStore.EPIC, game.appName)
+        if (task != null && MarkerUtils.hasPartialInstall(task.installPath)) return task.installPath
+        if (game.installPath.isNotBlank() && MarkerUtils.hasPartialInstall(game.installPath)) return game.installPath
+        return findPartialInstallPathsAndImportLegacy().firstOrNull {
+            File(it).name == EpicConstants.sanitizeGameDirectoryName(game.appName)
+        }
+    }
+
+    /** Scans every registered Epic library and imports the former external default once when found. */
+    private suspend fun findPartialInstallPathsAndImportLegacy(): Set<String> {
+        var snapshot = gameLibraryRepository.getSnapshot()
+        val layout = storeLibraryLayout(GameSource.EPIC)
+        val registeredRoots = snapshot.libraries.filter { it.source == GameSource.EPIC }
+            .map { layout.installRoot(it.rootPath) }
+            .toMutableSet()
+        if (PrefManager.externalStoragePath.isBlank()) {
+            return registeredRoots.asSequence()
+                .flatMap { MarkerUtils.findResumablePartialInstalls(it).asSequence() }
+                .toSet()
+        }
+        val legacyInstallRoot = EpicConstants.externalEpicGamesPath()
+        if (legacyInstallRoot !in registeredRoots && MarkerUtils.findResumablePartialInstalls(legacyInstallRoot).isNotEmpty()) {
+            val legacyLibraryRoot = File(legacyInstallRoot).parentFile.canonicalPath
+            try {
+                snapshot = gameLibraryRepository.addLibrary(GameSource.EPIC, legacyLibraryRoot)
+                registeredRoots += snapshot.libraries
+                    .filter { it.source == GameSource.EPIC }
+                    .map { layout.installRoot(it.rootPath) }
+                Timber.tag("Epic").i("Imported legacy Epic library: $legacyLibraryRoot")
+            } catch (exception: Exception) {
+                Timber.tag("Epic").e(exception, "Failed to import legacy Epic library: $legacyLibraryRoot")
+            }
+        }
+        return registeredRoots.asSequence()
+            .flatMap { MarkerUtils.findResumablePartialInstalls(it).asSequence() }
+            .toSet()
+    }
+
+    /** Persists the exact location of a partial discovered during the one-time legacy scan. */
+    private suspend fun persistDiscoveredPartial(game: EpicGame, path: String) {
+        if (storeDownloadTaskDao.find(DownloadStore.EPIC, game.appName) != null) return
+        val library = libraryForGamePath(path) ?: return
+        val now = System.currentTimeMillis()
+        storeDownloadTaskDao.upsert(
+            StoreDownloadTask(
+                store = DownloadStore.EPIC,
+                gameKey = game.appName,
+                appId = game.id,
+                libraryId = library.id,
+                libraryRoot = library.rootPath,
+                installPath = path,
+                state = StoreDownloadState.PAUSED,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
+    }
+
+    /** Finds a completed installation in DB first, then across every registered Epic library. */
+    private suspend fun findCompletedInstallPath(game: EpicGame): String? {
+        if (game.installPath.isNotBlank() && MarkerUtils.hasMarker(game.installPath, Marker.DOWNLOAD_COMPLETE_MARKER)) {
+            return game.installPath
+        }
+        val directoryName = EpicConstants.sanitizeGameDirectoryName(game.appName)
+        val layout = storeLibraryLayout(GameSource.EPIC)
+        return gameLibraryRepository.getSnapshot().libraries.asSequence()
+            .filter { it.source == GameSource.EPIC }
+            .map { File(layout.installRoot(it.rootPath), directoryName).path }
+            .firstOrNull { MarkerUtils.hasMarker(it, Marker.DOWNLOAD_COMPLETE_MARKER) }
+    }
+
+    /** Reconciles marker-backed installs after catalog refresh without moving game files. */
+    private suspend fun reconcileRegisteredInstallations() {
+        epicManager.getAllGames().forEach { game ->
+            if (game.appName.isBlank()) return@forEach
+            val path = findCompletedInstallPath(game) ?: return@forEach
+            if (!game.isInstalled || File(game.installPath).canonicalFile != File(path).canonicalFile) {
+                epicManager.updateGame(game.copy(isInstalled = true, installPath = path))
+            }
+        }
+    }
+
+    /** Resolves DB/task state for destructive operations without inventing a default path. */
+    private suspend fun resolveExistingPath(game: EpicGame): String? =
+        game.installPath.takeIf(String::isNotBlank)
+            ?: storeDownloadTaskDao.find(DownloadStore.EPIC, game.appName)?.installPath
+
+    /** Enforces the registered-library boundary immediately before recursive deletion. */
+    private suspend fun isRegisteredGamePath(path: String): Boolean = libraryForGamePath(path) != null
+
     override fun onCreate() {
         super.onCreate()
         instance = this
+        taskRecoveryJob = scope.launch {
+            val recovered = storeDownloadTaskDao.markInterruptedAsPaused(
+                DownloadStore.EPIC,
+                System.currentTimeMillis(),
+            )
+            if (recovered > 0) Timber.tag("Epic").i("Recovered $recovered interrupted Epic task(s)")
+        }
         Timber.tag("Epic").i("[EpicService] Service created")
 
         // Initialize notification helper for foreground service
@@ -645,7 +920,7 @@ class EpicService : Service() {
         val instance = getInstance()
         // Start as foreground service
         val notification = notificationHelper.createServiceNotification(NotificationHelper.NOTIFICATION_ID_EPIC, "Connected")
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NotificationHelper.NOTIFICATION_ID_EPIC, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NotificationHelper.NOTIFICATION_ID_EPIC, notification)
@@ -699,6 +974,7 @@ class EpicService : Service() {
                     if (syncResult.isFailure) {
                         Timber.w("Failed to start background sync: ${syncResult.exceptionOrNull()?.message}")
                     } else {
+                        reconcileRegisteredInstallations()
                         Timber.tag("EPIC").i("Background library sync completed successfully")
                         // Update last sync timestamp on successful sync
                         lastSyncTimestamp = System.currentTimeMillis()

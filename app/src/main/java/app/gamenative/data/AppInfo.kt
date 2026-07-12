@@ -19,6 +19,8 @@ data class AppInfo (
     val recoveredInstallSizeBytes: Long = 0L,
     @ColumnInfo("custom_install_path", defaultValue = "")
     val customInstallPath: String = "",
+    @ColumnInfo("managed_install_path", defaultValue = "")
+    val managedInstallPath: String = "",
 ) {
     val isImported: Boolean
         get() = customInstallPath != ""

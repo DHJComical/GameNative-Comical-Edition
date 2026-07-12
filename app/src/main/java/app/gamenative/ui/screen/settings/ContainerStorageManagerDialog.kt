@@ -1,22 +1,13 @@
 package app.gamenative.ui.screen.settings
 
-import android.Manifest
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.os.Environment
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -39,10 +29,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Delete
@@ -81,15 +71,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.ContextCompat
 import app.gamenative.R
-import app.gamenative.PrefManager
-import app.gamenative.service.SteamService
 import com.skydoves.landscapist.ImageOptions
 import com.skydoves.landscapist.coil.CoilImage
 import app.gamenative.data.GameSource
 import app.gamenative.ui.screen.library.GameMigrationDialog
-import app.gamenative.ui.components.getPathFromTreeUri
 import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.utils.ContainerStorageManager
@@ -98,14 +84,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.io.File
-
-data class SteamLibraryInfo(
-    val rootPath: String,
-    val installPath: String,
-    val isBuiltIn: Boolean,
-    val isDefault: Boolean,
-)
 
 @Stable
 class ContainerStorageManagerUiState internal constructor(
@@ -116,9 +94,6 @@ class ContainerStorageManagerUiState internal constructor(
         private set
 
     var volumeInfo by mutableStateOf<List<ContainerStorageManager.VolumeInfo>>(emptyList())
-        private set
-
-    var steamLibraries by mutableStateOf<List<SteamLibraryInfo>>(emptyList())
         private set
 
     var isLoadingExternalVolume by mutableStateOf(false)
@@ -165,8 +140,6 @@ class ContainerStorageManagerUiState internal constructor(
 
         scope.launch {
             isLoading = true
-            refreshSteamLibraries()
-
             val internal = ContainerStorageManager.getInternalVolumeInfo(appContext)
             volumeInfo = listOfNotNull(internal)
 
@@ -199,64 +172,6 @@ class ContainerStorageManagerUiState internal constructor(
             externalJob.join()
             isLoading = false
         }
-    }
-
-    private fun refreshSteamLibraries() {
-        updateSteamLibraries(PrefManager.steamLibraryPaths, PrefManager.defaultSteamLibraryPath)
-    }
-
-    private fun updateSteamLibraries(customRoots: Set<String>, selectedRoot: String) {
-        val builtIn = SteamLibraryInfo(
-            rootPath = "",
-            installPath = SteamService.internalAppInstallPath,
-            isBuiltIn = true,
-            isDefault = selectedRoot.isBlank(),
-        )
-        val custom = customRoots
-            .sorted()
-            .map { root ->
-                SteamLibraryInfo(
-                    rootPath = root,
-                    installPath = SteamService.steamLibraryInstallPath(root),
-                    isBuiltIn = false,
-                    isDefault = root == selectedRoot,
-                )
-            }
-        steamLibraries = listOf(builtIn) + custom
-    }
-
-    fun addSteamLibrary(rootPath: String) {
-        val normalizedRoot = File(rootPath).absoluteFile.normalize().path
-        val builtInRoot = File(SteamService.internalAppInstallPath).parentFile?.parentFile?.normalize()?.path
-        if (normalizedRoot == builtInRoot) {
-            setDefaultSteamLibrary("")
-            return
-        }
-        val commonDir = File(SteamService.steamLibraryInstallPath(normalizedRoot))
-        val stagingDir = File(SteamService.steamLibraryStagingPath(normalizedRoot))
-        if ((!commonDir.exists() && !commonDir.mkdirs()) || (!stagingDir.exists() && !stagingDir.mkdirs())) {
-            SnackbarManager.show(appContext.getString(R.string.steam_library_create_failed, normalizedRoot))
-            return
-        }
-        val updatedPaths = PrefManager.steamLibraryPaths + normalizedRoot
-        PrefManager.steamLibraryPaths = updatedPaths
-        PrefManager.defaultSteamLibraryPath = normalizedRoot
-        updateSteamLibraries(updatedPaths, normalizedRoot)
-    }
-
-    fun setDefaultSteamLibrary(rootPath: String) {
-        PrefManager.defaultSteamLibraryPath = rootPath
-        updateSteamLibraries(PrefManager.steamLibraryPaths, rootPath)
-    }
-
-    fun removeSteamLibrary(rootPath: String) {
-        val updatedPaths = PrefManager.steamLibraryPaths - rootPath
-        PrefManager.steamLibraryPaths = updatedPaths
-        val selectedRoot = if (PrefManager.defaultSteamLibraryPath == rootPath) "" else PrefManager.defaultSteamLibraryPath
-        if (PrefManager.defaultSteamLibraryPath == rootPath) {
-            PrefManager.defaultSteamLibraryPath = ""
-        }
-        updateSteamLibraries(updatedPaths, selectedRoot)
     }
 
     fun requestRemove(entry: ContainerStorageManager.Entry) {
@@ -496,6 +411,7 @@ fun ContainerStorageManagerContent(
     modifier: Modifier = Modifier,
     onDismissRequest: (() -> Unit)? = null,
     onOpenGame: ((GameSource, String, String, String) -> Unit)? = null,
+    onGameLibrariesClick: () -> Unit = {},
 ) {
     LaunchedEffect(state) {
         state.ensureLoaded()
@@ -504,7 +420,7 @@ fun ContainerStorageManagerContent(
     Column(
         modifier = modifier.fillMaxSize(),
     ) {
-        SteamLibrariesSection(state)
+        GameLibrariesEntry(onClick = onGameLibrariesClick)
         Spacer(modifier = Modifier.height(12.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
         Spacer(modifier = Modifier.height(12.dp))
@@ -649,153 +565,44 @@ fun ContainerStorageManagerContent(
 }
 
 @Composable
-private fun SteamLibrariesSection(state: ContainerStorageManagerUiState) {
-    val context = LocalContext.current
-    var launchPickerAfterPermission by remember { mutableStateOf(false) }
-
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
-        }
-        val path = getPathFromTreeUri(context, uri)
-        if (path != null) {
-            state.addSteamLibrary(path)
-        } else {
-            SnackbarManager.show(context.getString(R.string.steam_library_invalid_path))
-        }
-    }
-
-    val manageAllFilesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager() && launchPickerAfterPermission) {
-            launchPickerAfterPermission = false
-            folderPicker.launch(null)
-        } else {
-            launchPickerAfterPermission = false
-        }
-    }
-
-    val legacyPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        if (result.values.all { it } && launchPickerAfterPermission) {
-            launchPickerAfterPermission = false
-            folderPicker.launch(null)
-        } else {
-            launchPickerAfterPermission = false
-        }
-    }
-
-    fun addLibrary() {
-        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        }
-        if (hasPermission) {
-            folderPicker.launch(null)
-        } else {
-            launchPickerAfterPermission = true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                manageAllFilesLauncher.launch(
-                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                    },
-                )
-            } else {
-                legacyPermissionLauncher.launch(
-                    arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE),
-                )
-            }
-        }
-    }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.steam_libraries_title),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(R.string.steam_libraries_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        FilledTonalButton(onClick = ::addLibrary) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.size(6.dp))
-            Text(stringResource(R.string.steam_library_add))
-        }
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-    Column(
+private fun GameLibrariesEntry(onClick: () -> Unit) {
+    Surface(
         modifier = Modifier
-            .heightIn(max = 220.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        state.steamLibraries.forEach { library ->
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                border = BorderStroke(
-                    1.dp,
-                    if (library.isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                ),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Icon(
-                        imageVector = if (library.isDefault) Icons.Default.CheckCircle else Icons.Default.Storage,
-                        contentDescription = null,
-                        tint = if (library.isDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = when {
-                                library.isBuiltIn -> stringResource(R.string.steam_library_built_in)
-                                library.isDefault -> stringResource(R.string.steam_library_default)
-                                else -> stringResource(R.string.steam_library_custom)
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = library.installPath,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (!library.isDefault) {
-                        TextButton(onClick = { state.setDefaultSteamLibrary(library.rootPath) }) {
-                            Text(stringResource(R.string.steam_library_set_default))
-                        }
-                    }
-                    if (!library.isBuiltIn) {
-                        IconButton(onClick = { state.removeSteamLibrary(library.rootPath) }) {
-                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.steam_library_remove))
-                        }
-                    }
-                }
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Storage,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.game_libraries_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.game_libraries_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = stringResource(R.string.game_libraries_open),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

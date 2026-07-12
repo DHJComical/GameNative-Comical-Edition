@@ -28,7 +28,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -44,8 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.gamenative.R
+import app.gamenative.data.GameSource
 import app.gamenative.data.EpicGame
-import app.gamenative.service.epic.EpicConstants
 import app.gamenative.service.epic.EpicService
 import app.gamenative.ui.component.LoadingScreen
 import app.gamenative.ui.component.dialog.InstallSizeInfo
@@ -64,7 +67,7 @@ import java.util.Locale
 fun EpicGameManagerDialog(
     visible: Boolean,
     onGetDisplayInfo: @Composable (Context) -> GameDisplayInfo,
-    onInstall: (List<Int>) -> Unit,
+    onInstall: (List<Int>, String) -> Unit,
     onDismissRequest: () -> Unit
 ) {
     val context = LocalContext.current
@@ -72,9 +75,11 @@ fun EpicGameManagerDialog(
 
     val allDownloadableGames = remember { mutableStateListOf<EpicGame>() }
     val selectedGameIds = remember { mutableStateMapOf<Int, Boolean>() }
+    var selectedLibrary by remember { mutableStateOf<InstallLibraryOption?>(null) }
 
     val displayInfo = onGetDisplayInfo(context)
     val gameId = displayInfo.gameId
+    var selectedLibraryId by rememberSaveable(gameId) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(visible) {
         scrollState.animateScrollTo(0)
@@ -111,9 +116,9 @@ fun EpicGameManagerDialog(
     }
 
     fun getInstallSizeInfo(): InstallSizeInfo {
-        val installPath = EpicConstants.defaultEpicGamesPath(context)
+        val installPath = selectedLibrary?.installRoot.orEmpty()
         val availableBytes = try {
-            StorageUtils.getAvailableSpace(installPath)
+            StorageUtils.getAvailableSpaceForUncreatedPath(installPath)
         } catch (e: Exception) {
             0L
         }
@@ -134,7 +139,7 @@ fun EpicGameManagerDialog(
         )
     }
 
-    val installSizeInfo by remember(selectedGameIds.toMap()) {
+    val installSizeInfo by remember(selectedGameIds.toMap(), selectedLibrary) {
         derivedStateOf { getInstallSizeInfo() }
     }
 
@@ -330,6 +335,14 @@ fun EpicGameManagerDialog(
                         Column(
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            InstallLibrarySelector(
+                                source = GameSource.EPIC,
+                                selectedLibraryId = selectedLibraryId,
+                                onSelectionChanged = {
+                                    selectedLibrary = it
+                                    selectedLibraryId = it?.library?.id
+                                },
+                            )
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -343,13 +356,13 @@ fun EpicGameManagerDialog(
                                 )
 
                                 Button(
-                                    enabled = installButtonEnabled(),
+                                    enabled = selectedLibrary != null && installButtonEnabled(),
                                     onClick = {
                                         val selectedIds = selectedGameIds
                                             .filter { it.value }
                                             .keys
                                             .toList()
-                                        onInstall(selectedIds)
+                                        onInstall(selectedIds, selectedLibrary!!.library.id)
                                     }
                                 ) {
                                     Text(stringResource(R.string.install))

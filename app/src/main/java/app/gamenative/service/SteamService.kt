@@ -9,6 +9,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.IBinder
+import android.os.Build
 import android.util.Base64
 import app.gamenative.ui.util.SnackbarManager
 import androidx.room.withTransaction
@@ -27,6 +28,10 @@ import app.gamenative.data.GameSource
 import app.gamenative.data.LaunchInfo
 import app.gamenative.data.OwnedGames
 import app.gamenative.data.PostSyncInfo
+import app.gamenative.data.DownloadStore
+import app.gamenative.data.StoreDownloadOperation
+import app.gamenative.data.StoreDownloadState
+import app.gamenative.data.StoreDownloadTask
 import app.gamenative.data.SteamApp
 import app.gamenative.data.SteamControllerConfigDetail
 import app.gamenative.data.SteamFriend
@@ -41,6 +46,11 @@ import app.gamenative.db.dao.FileChangeListsDao
 import app.gamenative.db.dao.SteamAppDao
 import app.gamenative.db.dao.SteamFileHashCacheDao
 import app.gamenative.db.dao.SteamLicenseDao
+import app.gamenative.db.dao.StoreDownloadTaskDao
+import app.gamenative.data.library.GameLibrary
+import app.gamenative.data.library.GameLibraryInstallation
+import app.gamenative.data.library.GameLibraryRepository
+import app.gamenative.data.library.SteamLibraryLayout
 import app.gamenative.enums.LoginResult
 import app.gamenative.enums.Marker
 import app.gamenative.enums.OS
@@ -172,12 +182,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.winlator.container.ContainerManager
 import app.gamenative.statsgen.StatType
+import app.gamenative.statsgen.Achievement
 import app.gamenative.statsgen.StatsAchievementsGenerator
 import app.gamenative.statsgen.VdfParser
 import app.gamenative.utils.DownloadSpeedConfig
 import app.gamenative.utils.CustomGameScanner
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+
+/** One immutable result used to initialize the Steam install dialog without blocking UI. */
+data class SteamInstallStatusSnapshot(
+    val completedInstallPaths: Map<Int, String>,
+    val appInfoById: Map<Int, AppInfo>,
+)
 
 @AndroidEntryPoint
 class SteamService : Service(), IChallengeUrlChanged {
@@ -228,6 +245,15 @@ class SteamService : Service(), IChallengeUrlChanged {
     @Inject
     lateinit var steamUnlockedBranchDao: SteamUnlockedBranchDao
 
+    @Inject
+    lateinit var gameLibraryRepository: GameLibraryRepository
+
+    private val initializedGameLibraryRepository: GameLibraryRepository?
+        get() = if (::gameLibraryRepository.isInitialized) gameLibraryRepository else null
+
+    @Inject
+    lateinit var storeDownloadTaskDao: StoreDownloadTaskDao
+
     private lateinit var notificationHelper: NotificationHelper
 
     private val notifierOrNull: NotificationHelper? get() = if (::notificationHelper.isInitialized) notificationHelper else null
@@ -267,6 +293,7 @@ class SteamService : Service(), IChallengeUrlChanged {
     )
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var taskRecoveryJob: Job? = null
     private var reconnectJob: Job? = null
     private var offlineAchievementSyncJob: Job? = null
     private val pendingSyncAppIds: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
@@ -324,7 +351,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         internal var instance: SteamService? = null
 
-        var cachedAchievements: List<app.gamenative.statsgen.Achievement>? = null
+        var cachedAchievements: List<Achievement>? = null
             private set
         var cachedAchievementsAppId: Int? = null
             private set
@@ -466,23 +493,95 @@ class SteamService : Service(), IChallengeUrlChanged {
         internal fun steamLibraryStagingPath(rootPath: String): String =
             Paths.get(rootPath, "steamapps", "staging").pathString
 
+        internal fun resolveCompletedInstallPaths(
+            appIds: Collection<Int>,
+            installPaths: List<String>,
+            recordedInstallPaths: Map<Int, String>,
+            directoryNames: Map<Int, List<String>>,
+        ): Map<Int, String> = buildMap {
+            appIds.distinct().forEach { appId ->
+                val recordedPath = recordedInstallPaths[appId]
+                val completedPath = if (recordedPath != null) {
+                    recordedPath.takeIf {
+                        MarkerUtils.hasMarker(it, Marker.DOWNLOAD_COMPLETE_MARKER)
+                    }
+                } else {
+                    resolveExistingAppDir(installPaths, directoryNames[appId].orEmpty())
+                        ?.takeIf { MarkerUtils.hasMarker(it, Marker.DOWNLOAD_COMPLETE_MARKER) }
+                }
+                if (completedPath != null) put(appId, completedPath)
+            }
+        }
+
+        private fun buildInstallPaths(libraries: List<GameLibrary>?): List<String> {
+            val paths = mutableListOf<String>()
+            paths += libraries.orEmpty()
+                .filter { it.source == GameSource.STEAM }
+                .map { SteamLibraryLayout.installRoot(it.rootPath) }
+            if (paths.isEmpty()) paths += internalAppInstallPath
+            if (PrefManager.externalStoragePath.isNotBlank()) {
+                paths += externalAppInstallPath
+            }
+            paths += PrefManager.steamLibraryPaths
+                .filter { it.isNotBlank() }
+                .map(::steamLibraryInstallPath)
+            for (volPath in DownloadService.externalVolumePaths) {
+                if (volPath.isNotBlank()) {
+                    paths += Paths.get(volPath, "Steam", "steamapps", "common").pathString
+                }
+            }
+            return paths.distinct()
+        }
+
+        private suspend fun loadInstallPaths(): List<String> {
+            val libraries = instance?.initializedGameLibraryRepository
+                ?.getSnapshot()
+                ?.libraries
+            return buildInstallPaths(libraries)
+        }
+
+        /** Loads all installation state needed by one dialog in a single IO transaction. */
+        suspend fun loadInstallStatus(appIds: Collection<Int>): SteamInstallStatusSnapshot =
+            withContext(Dispatchers.IO) {
+                val service = checkNotNull(instance) { "Steam service is not initialized" }
+                val distinctAppIds = appIds.distinct()
+                val installPaths = loadInstallPaths()
+                val appInfoById = service.appInfoDao.getAll()
+                    .filter { it.id in distinctAppIds }
+                    .associateBy { it.id }
+                val steamApps = distinctAppIds
+                    .chunked(900)
+                    .flatMap { ids -> service.appDao.findSteamAppWithAppIds(ids) }
+                    .associateBy { it.id }
+                val recordedInstallPaths = appInfoById.mapNotNull { (appId, appInfo) ->
+                    val path = when {
+                        appInfo.managedInstallPath.isNotBlank() -> appInfo.managedInstallPath
+                        appInfo.isImported -> appInfo.customInstallPath
+                        else -> null
+                    }
+                    path?.let { appId to it }
+                }.toMap()
+                val directoryNames = steamApps.mapValues { (_, app) ->
+                    listOf(getAppDirName(app), app.name).filter { it.isNotEmpty() }.distinct()
+                }
+                SteamInstallStatusSnapshot(
+                    completedInstallPaths = resolveCompletedInstallPaths(
+                        appIds = distinctAppIds,
+                        installPaths = installPaths,
+                        recordedInstallPaths = recordedInstallPaths,
+                        directoryNames = directoryNames,
+                    ),
+                    appInfoById = appInfoById,
+                )
+            }
+
         // all install paths: internal + configured external + all mounted volumes
         val allInstallPaths: List<String>
             get() {
-                val paths = mutableListOf(internalAppInstallPath)
-                // only include configured external path if it's a real absolute path
-                if (PrefManager.externalStoragePath.isNotBlank()) {
-                    paths += externalAppInstallPath
+                val libraries = instance?.initializedGameLibraryRepository?.let { repository ->
+                    runBlocking(Dispatchers.IO) { repository.getSnapshot().libraries }
                 }
-                paths += PrefManager.steamLibraryPaths
-                    .filter { it.isNotBlank() }
-                    .map(::steamLibraryInstallPath)
-                for (volPath in DownloadService.externalVolumePaths) {
-                    if (volPath.isNotBlank()) {
-                        paths += Paths.get(volPath, "Steam", "steamapps", "common").pathString
-                    }
-                }
-                return paths.distinct()
+                return buildInstallPaths(libraries)
             }
 
         private val internalAppStagingPath: String
@@ -517,6 +616,13 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         val defaultAppInstallPath: String
             get() {
+                instance?.initializedGameLibraryRepository?.let { repository ->
+                    return runBlocking(Dispatchers.IO) {
+                        val snapshot = repository.getSnapshot()
+                        val id = snapshot.defaultLibraryIds.getValue(GameSource.STEAM)
+                        repository.resolveInstallation(GameSource.STEAM, id).installRoot
+                    }
+                }
                 PrefManager.defaultSteamLibraryPath.takeIf { it.isNotBlank() }?.let {
                     return steamLibraryInstallPath(it)
                 }
@@ -532,6 +638,13 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         val defaultAppStagingPath: String
             get() {
+                instance?.initializedGameLibraryRepository?.let { repository ->
+                    return runBlocking(Dispatchers.IO) {
+                        val snapshot = repository.getSnapshot()
+                        val id = snapshot.defaultLibraryIds.getValue(GameSource.STEAM)
+                        repository.resolveInstallation(GameSource.STEAM, id).stagingRoot
+                    }
+                }
                 PrefManager.defaultSteamLibraryPath.takeIf { it.isNotBlank() }?.let {
                     return steamLibraryStagingPath(it)
                 }
@@ -579,7 +692,8 @@ class SteamService : Service(), IChallengeUrlChanged {
                     delay(100)
                 }
                 false
-            } catch (_: Exception) {
+            } catch (exception: Exception) {
+                Timber.w(exception, "Failed to kick the active Steam playing session")
                 false
             }
         }
@@ -1094,6 +1208,9 @@ class SteamService : Service(), IChallengeUrlChanged {
 
             // For installed game, check whether it has customInstallPath and return it
             val appInfo = getInstalledApp(gameId)
+            if (appInfo?.managedInstallPath?.isNotBlank() == true) {
+                return appInfo.managedInstallPath
+            }
             if (appInfo != null && appInfo.isImported) {
                 return appInfo.customInstallPath
             }
@@ -1117,6 +1234,157 @@ class SteamService : Service(), IChallengeUrlChanged {
 
             // nothing on disk yet — default to preferred install location
             return Paths.get(defaultAppInstallPath, appName).pathString
+        }
+
+        /** Exact validated Steam target retained by every incomplete download. */
+        private data class SteamDownloadTarget(
+            val library: GameLibrary,
+            val installPath: String,
+        )
+
+        /**
+         * Resolves a Steam target by durable task or stable library id. Updates and verifies stay
+         * at the existing install path; custom-library permission is rechecked by the repository.
+         */
+        private suspend fun resolveSteamDownloadTarget(
+            appId: Int,
+            libraryId: String?,
+            legacyLibraryRoot: String?,
+            operation: StoreDownloadOperation,
+        ): SteamDownloadTarget {
+            val service = instance ?: error("SteamService is not running")
+            service.taskRecoveryJob?.join()
+            val task = service.storeDownloadTaskDao.find(DownloadStore.STEAM, appId.toString())
+            if (task != null && task.installPath.isNotBlank()) {
+                val installation = service.gameLibraryRepository.resolveInstallation(
+                    GameSource.STEAM,
+                    task.libraryId,
+                )
+                validateSteamTaskLocation(task, installation, steamDirectoryNames(appId))
+                return SteamDownloadTarget(installation.library, task.installPath)
+            }
+
+            val snapshot = service.gameLibraryRepository.getSnapshot()
+            val existingPath = if (operation != StoreDownloadOperation.INSTALL || task != null) {
+                resolveExistingAppDir(
+                    snapshot.libraries
+                        .filter { it.source == GameSource.STEAM }
+                        .map { SteamLibraryLayout.installRoot(it.rootPath) },
+                    steamDirectoryNames(appId),
+                )
+            } else {
+                null
+            }
+            if (existingPath != null) {
+                val existingParent = File(existingPath).parentFile
+                    ?: throw IllegalArgumentException("Steam install path has no parent: $existingPath")
+                val library = snapshot.libraries.singleOrNull { candidate ->
+                    candidate.source == GameSource.STEAM &&
+                        existingParent.canonicalPath ==
+                        File(SteamLibraryLayout.installRoot(candidate.rootPath)).canonicalPath
+                } ?: error("Existing Steam install is outside registered libraries: $existingPath")
+                service.gameLibraryRepository.resolveInstallation(GameSource.STEAM, library.id)
+                if (task != null) {
+                    Timber.w("Backfilled legacy Steam task path for app %d: %s", appId, existingPath)
+                    service.storeDownloadTaskDao.updateLocation(
+                        store = DownloadStore.STEAM,
+                        gameKey = appId.toString(),
+                        libraryId = library.id,
+                        libraryRoot = library.rootPath,
+                        installPath = existingPath,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                }
+                return SteamDownloadTarget(library, existingPath)
+            }
+
+            require(operation == StoreDownloadOperation.INSTALL) {
+                "Steam update or verify has no existing install path for app $appId"
+            }
+            val requestedId = libraryId ?: legacyLibraryRoot?.let { root ->
+                val canonicalRoot = File(
+                    root.ifBlank { File(DownloadService.baseDataDirPath, "Steam").path },
+                ).canonicalPath
+                snapshot.libraries.singleOrNull {
+                    it.source == GameSource.STEAM && File(it.rootPath).canonicalPath == canonicalRoot
+                }?.id ?: throw IllegalArgumentException("Unregistered Steam library root: $root")
+            } ?: snapshot.defaultLibraryIds.getValue(GameSource.STEAM)
+            val installation = service.gameLibraryRepository.resolveInstallation(GameSource.STEAM, requestedId)
+            val appName = getAppDirName(getAppInfoOf(appId))
+            require(appName.isNotBlank()) { "Steam app $appId has no install directory name" }
+            return SteamDownloadTarget(
+                library = installation.library,
+                installPath = File(installation.installRoot, appName).path,
+            )
+        }
+
+        /** Rejects stale or tampered task locations before any filesystem write occurs. */
+        internal fun validateSteamTaskLocation(
+            task: StoreDownloadTask,
+            installation: GameLibraryInstallation,
+            expectedDirectoryNames: List<String>,
+        ) {
+            val canonicalInstall = File(task.installPath).canonicalFile
+            val installParent = canonicalInstall.parentFile
+                ?: throw IllegalArgumentException("Steam task install path has no parent")
+            require(task.libraryId == installation.library.id) {
+                "Steam task library id does not match resolved installation"
+            }
+            require(File(task.libraryRoot).canonicalPath == File(installation.library.rootPath).canonicalPath) {
+                "Steam task library root no longer matches ${task.libraryId}"
+            }
+            require(installParent.canonicalPath == File(installation.installRoot).canonicalPath) {
+                "Steam task install path is outside library ${task.libraryId}"
+            }
+            require(canonicalInstall.name in expectedDirectoryNames.filter(String::isNotBlank)) {
+                "Steam task install directory does not match app ${task.appId}"
+            }
+        }
+
+        /**
+         * Validates the exact deletion target. Registered installs must be direct children of a
+         * Steam install root and match the app directory name. Imported installs are allowed only
+         * when the target exactly equals their persisted custom path.
+         */
+        internal fun validateSteamDeletionTarget(
+            targetPath: String,
+            expectedDirectoryNames: List<String>,
+            libraries: List<GameLibrary>,
+            importedPath: String?,
+        ): GameLibrary? {
+            val canonicalTarget = File(targetPath).canonicalFile
+            if (importedPath != null) {
+                require(importedPath.isNotBlank()) { "Imported Steam install path must not be blank" }
+                require(canonicalTarget.path == File(importedPath).canonicalPath) {
+                    "Imported Steam deletion target does not match its persisted path"
+                }
+                return null
+            }
+
+            require(canonicalTarget.name in expectedDirectoryNames.filter(String::isNotBlank)) {
+                "Steam deletion target does not match the app install directory"
+            }
+            val targetParent = canonicalTarget.parentFile
+                ?: throw IllegalArgumentException("Steam deletion target has no parent")
+            return libraries.singleOrNull { library ->
+                library.source == GameSource.STEAM &&
+                    targetParent.path ==
+                    File(SteamLibraryLayout.installRoot(library.rootPath)).canonicalPath
+            } ?: throw IllegalArgumentException(
+                "Steam deletion target is not a direct child of a registered library: $targetPath",
+            )
+        }
+
+        /** True only when recursive deletion reports success and the target is confirmed absent. */
+        internal fun deletionRemovedTarget(deleteReturned: Boolean, targetExistsAfter: Boolean): Boolean =
+            deleteReturned && !targetExistsAfter
+
+        /** Returns current and legacy Steam directory names used only for installed-file discovery. */
+        private fun steamDirectoryNames(appId: Int): List<String> {
+            val info = getAppInfoOf(appId)
+            val current = getAppDirName(info)
+            val legacy = info?.name.orEmpty()
+            return if (legacy.isNotEmpty() && legacy != current) listOf(current, legacy) else listOf(current)
         }
 
         private fun isExecutable(flags: Any): Boolean = when (flags) {
@@ -1337,53 +1605,81 @@ class SteamService : Service(), IChallengeUrlChanged {
         }
 
         suspend fun deleteApp(appId: Int): Boolean = withContext(Dispatchers.IO) {
-            // snapshot path before marker removal (removing the marker changes resolution)
+            val service = instance ?: error("SteamService is not running")
             val appInfo = getInstalledApp(appId)
-            val result = if (appInfo?.isImported == true) {
-                // For imported game, do cleanup
-                // Remove from manual folders list and invalidate cache
-                val folderPath = appInfo.customInstallPath
-                val manualFolders = PrefManager.customGameManualFolders.toMutableSet()
-                manualFolders.remove(folderPath)
-                PrefManager.customGameManualFolders = manualFolders
-                CustomGameScanner.invalidateCache()
-
-                MarkerUtils.removeMarker(folderPath, Marker.DOWNLOAD_COMPLETE_MARKER)
-
-                true
-            } else {
-                val appDirPath = getAppDirPath(appId)
-                val appDir = File(appDirPath)
-
-                if (appDir.exists()) {
-                    MarkerUtils.removeMarker(appDirPath, Marker.DOWNLOAD_COMPLETE_MARKER)
+            val importedPath = appInfo?.customInstallPath?.takeIf { appInfo.isImported }
+            val targetPath = importedPath ?: getAppDirPath(appId)
+            val snapshot = service.gameLibraryRepository.getSnapshot()
+            val owningLibrary = try {
+                validateSteamDeletionTarget(
+                    targetPath = targetPath,
+                    expectedDirectoryNames = steamDirectoryNames(appId),
+                    libraries = snapshot.libraries,
+                    importedPath = importedPath,
+                )
+            } catch (exception: Exception) {
+                Timber.e(exception, "Refusing unsafe Steam deletion for app %d at %s", appId, targetPath)
+                return@withContext false
+            }
+            if (owningLibrary != null) {
+                try {
+                    service.gameLibraryRepository.resolveInstallation(GameSource.STEAM, owningLibrary.id)
+                } catch (exception: Exception) {
+                    Timber.e(exception, "Steam library access validation failed before deleting app %d", appId)
+                    return@withContext false
                 }
-
-                File(appDirPath).deleteRecursively()
             }
 
-            // Remove from DB
-            workshopPausedApps.remove(appId)
-            with(instance!!) {
-                db.withTransaction {
-                    appInfoDao.deleteApp(appId)
-                    changeNumbersDao.deleteByAppId(appId)
-                    fileChangeListsDao.deleteByAppId(appId)
-                    steamFileHashCacheDao.deleteByAppId(appId)
-                    downloadingAppInfoDao.deleteApp(appId)
-                    appDao.clearWorkshopState(appId)
+            val target = File(targetPath)
+            if (target.exists()) {
+                val deleteReturned = try {
+                    target.deleteRecursively()
+                } catch (exception: Exception) {
+                    Timber.e(exception, "Steam filesystem deletion failed for app %d at %s", appId, targetPath)
+                    return@withContext false
+                }
+                if (!deletionRemovedTarget(deleteReturned, target.exists())) {
+                    Timber.e(
+                        "Steam filesystem deletion incomplete for app %d at %s (returned=%s, exists=%s)",
+                        appId,
+                        targetPath,
+                        deleteReturned,
+                        target.exists(),
+                    )
+                    return@withContext false
+                }
+            }
+
+            try {
+                service.db.withTransaction {
+                    service.appInfoDao.deleteApp(appId)
+                    service.changeNumbersDao.deleteByAppId(appId)
+                    service.fileChangeListsDao.deleteByAppId(appId)
+                    service.steamFileHashCacheDao.deleteByAppId(appId)
+                    service.downloadingAppInfoDao.deleteApp(appId)
+                    service.storeDownloadTaskDao.delete(DownloadStore.STEAM, appId.toString())
+                    service.appDao.clearWorkshopState(appId)
 
                     val indirectDlcAppIds = getDownloadableDlcAppsOf(appId).orEmpty().map { it.id }
                     indirectDlcAppIds.forEach { dlcAppId ->
-                        appInfoDao.deleteApp(dlcAppId)
-                        changeNumbersDao.deleteByAppId(dlcAppId)
-                        fileChangeListsDao.deleteByAppId(dlcAppId)
-                        steamFileHashCacheDao.deleteByAppId(dlcAppId)
+                        service.appInfoDao.deleteApp(dlcAppId)
+                        service.changeNumbersDao.deleteByAppId(dlcAppId)
+                        service.fileChangeListsDao.deleteByAppId(dlcAppId)
+                        service.steamFileHashCacheDao.deleteByAppId(dlcAppId)
                     }
                 }
+            } catch (exception: Exception) {
+                Timber.e(exception, "Steam database cleanup failed after deleting app %d", appId)
+                return@withContext false
             }
 
-            return@withContext result
+            workshopPausedApps.remove(appId)
+            if (importedPath != null) {
+                PrefManager.customGameManualFolders =
+                    PrefManager.customGameManualFolders - importedPath
+                CustomGameScanner.invalidateCache()
+            }
+            return@withContext true
         }
 
         fun downloadApp(appId: Int): DownloadInfo? {
@@ -1420,6 +1716,12 @@ class SteamService : Service(), IChallengeUrlChanged {
             branch: String = "public",
             isUpdateOrVerify: Boolean,
             steamLibraryRoot: String? = null,
+            libraryId: String? = null,
+            operation: StoreDownloadOperation = if (isUpdateOrVerify) {
+                StoreDownloadOperation.UPDATE
+            } else {
+                StoreDownloadOperation.INSTALL
+            },
         ): DownloadInfo? {
             if (!checkWifiOrNotify()) return null
             return getAppInfoOf(appId)?.let { appInfo ->
@@ -1441,6 +1743,8 @@ class SteamService : Service(), IChallengeUrlChanged {
                     containerLanguage = containerLanguage,
                     isUpdateOrVerify = isUpdateOrVerify,
                     steamLibraryRoot = steamLibraryRoot,
+                    libraryId = libraryId,
+                    operation = operation,
                 )
             }
         }
@@ -1742,13 +2046,22 @@ class SteamService : Service(), IChallengeUrlChanged {
             containerLanguage: String,
             isUpdateOrVerify: Boolean,
             steamLibraryRoot: String? = null,
+            libraryId: String? = null,
+            operation: StoreDownloadOperation = if (isUpdateOrVerify) {
+                StoreDownloadOperation.UPDATE
+            } else {
+                StoreDownloadOperation.INSTALL
+            },
         ): DownloadInfo? {
-            val appDirPath = getAppDirPath(appId, steamLibraryRoot)
-
             if (!checkWifiOrNotify()) return null
             if (downloadJobs.contains(appId)) return getAppDownloadInfo(appId)
             Timber.d("depots is empty? " + downloadableDepots.isEmpty())
             if (downloadableDepots.isEmpty()) return null
+
+            val target = runBlocking(Dispatchers.IO) {
+                resolveSteamDownloadTarget(appId, libraryId, steamLibraryRoot, operation)
+            }
+            val appDirPath = target.installPath
 
             val indirectDlcAppIds = getDownloadableDlcAppsOf(appId).orEmpty().map { it.id }
 
@@ -1817,9 +2130,29 @@ class SteamService : Service(), IChallengeUrlChanged {
             Timber.i("DLC contains ${dlcAppDepots.size} depot(s): ${dlcAppDepots.keys}")
             Timber.i("downloadingAppIds: $downloadingAppIds")
 
-            // Save downloading app info
+            // Persist the complete task before exposing an in-memory download.
             runBlocking {
-                instance?.downloadingAppInfoDao?.insert(
+                val service = instance ?: error("SteamService is not running")
+                val now = System.currentTimeMillis()
+                val previous = service.storeDownloadTaskDao.find(DownloadStore.STEAM, appId.toString())
+                service.storeDownloadTaskDao.upsert(
+                    StoreDownloadTask(
+                        store = DownloadStore.STEAM,
+                        gameKey = appId.toString(),
+                        appId = appId,
+                        libraryId = target.library.id,
+                        libraryRoot = target.library.rootPath,
+                        installPath = appDirPath,
+                        dlcAppIds = userSelectedDlcAppIds,
+                        branch = branch,
+                        language = containerLanguage,
+                        operation = operation,
+                        state = StoreDownloadState.PREPARING,
+                        createdAt = previous?.createdAt ?: now,
+                        updatedAt = now,
+                    ),
+                )
+                service.downloadingAppInfoDao.insert(
                     DownloadingAppInfo(
                         appId,
                         dlcAppIds = userSelectedDlcAppIds,
@@ -1862,10 +2195,22 @@ class SteamService : Service(), IChallengeUrlChanged {
 
                 val downloadJob = instance!!.scope.launch {
                     try {
+                        instance!!.storeDownloadTaskDao.updateState(
+                            DownloadStore.STEAM,
+                            appId.toString(),
+                            StoreDownloadState.RUNNING,
+                            System.currentTimeMillis(),
+                        )
                         // Get licenses from database
                         val licenses = getLicensesFromDb()
                         if (licenses.isEmpty()) {
                             Timber.w("No licenses available for download")
+                            instance!!.storeDownloadTaskDao.updateState(
+                                DownloadStore.STEAM,
+                                appId.toString(),
+                                StoreDownloadState.FAILED,
+                                System.currentTimeMillis(),
+                            )
                             return@launch
                         }
 
@@ -2111,11 +2456,24 @@ class SteamService : Service(), IChallengeUrlChanged {
 
                         // Remove the downloading app info
                         instance?.downloadingAppInfoDao?.deleteApp(appId)
+                        instance!!.storeDownloadTaskDao.delete(DownloadStore.STEAM, appId.toString())
                     } catch (e: CancellationException) {
                         Timber.d(e, "Download canceled for app $appId")
+                        instance!!.storeDownloadTaskDao.updateState(
+                            DownloadStore.STEAM,
+                            appId.toString(),
+                            StoreDownloadState.PAUSED,
+                            System.currentTimeMillis(),
+                        )
                         throw e
                     } catch (e: Exception) {
                         Timber.e(e, "Download failed for app $appId")
+                        instance!!.storeDownloadTaskDao.updateState(
+                            DownloadStore.STEAM,
+                            appId.toString(),
+                            StoreDownloadState.FAILED,
+                            System.currentTimeMillis(),
+                        )
                         di.persistProgressSnapshot()
                         // Mark all depots as failed
                         selectedDepots.keys.sorted().forEachIndexed { idx, _ ->
@@ -2267,9 +2625,14 @@ class SteamService : Service(), IChallengeUrlChanged {
                 Timber.e(error, "Item ${item.appId} failed to download")
                 downloadInfo.failedToDownload()
 
-                // Remove the downloading app info
+                // Keep the durable task so the failed download remains resumable.
                 runBlocking {
-                    instance?.downloadingAppInfoDao?.deleteApp(downloadInfo.gameId)
+                    instance?.storeDownloadTaskDao?.updateState(
+                        DownloadStore.STEAM,
+                        downloadInfo.gameId.toString(),
+                        StoreDownloadState.FAILED,
+                        System.currentTimeMillis(),
+                    )
                 }
 
                 removeDownloadJob(downloadInfo.gameId)
@@ -3129,7 +3492,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         // Seed the GSE achievements file to ensure that we don't get early unlock triggers (Games such as Brotato do re-triggers on launch).
         // merges results with ones from Steam Servers so we don't overwrite offline achievements.
-        private fun seedGseSaveAchievements(dirs: List<File>, achievements: List<app.gamenative.statsgen.Achievement>) {
+        private fun seedGseSaveAchievements(dirs: List<File>, achievements: List<Achievement>) {
             if (achievements.isEmpty()) return
             for (dir in dirs) {
                 try {
@@ -3401,7 +3764,14 @@ class SteamService : Service(), IChallengeUrlChanged {
         PluviaApp.events.on<AndroidEvent.EndProcess, Unit>(onEndProcess)
 
         // clear stale download records (completed games) but keep interrupted ones (preserves DLC selection)
-        scope.launch {
+        taskRecoveryJob = scope.launch {
+            val pausedCount = storeDownloadTaskDao.markInterruptedAsPaused(
+                DownloadStore.STEAM,
+                System.currentTimeMillis(),
+            )
+            if (pausedCount > 0) {
+                Timber.i("Marked %d interrupted store downloads as paused", pausedCount)
+            }
             for (record in downloadingAppInfoDao.getAll()) {
                 if (isAppInstalled(record.appId)) {
                     downloadingAppInfoDao.deleteApp(record.appId)
@@ -3454,7 +3824,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
         // Start up the notification early to to avoid ForegroundServiceDidNotStartInTimeException
         val notification = notificationHelper.createServiceNotification(NotificationHelper.NOTIFICATION_ID_STEAM, "Running...")
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NotificationHelper.NOTIFICATION_ID_STEAM, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NotificationHelper.NOTIFICATION_ID_STEAM, notification)

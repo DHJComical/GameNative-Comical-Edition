@@ -9,24 +9,32 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import app.gamenative.PluviaApp
 import app.gamenative.R
 import app.gamenative.data.GOGGame
+import app.gamenative.data.GameSource
 import app.gamenative.data.LibraryItem
 import app.gamenative.enums.Marker
+import app.gamenative.events.AndroidEvent
 import app.gamenative.service.DownloadService
-import app.gamenative.service.gog.GOGConstants
 import app.gamenative.service.gog.GOGService
+import app.gamenative.ui.component.dialog.MessageDialog
+import app.gamenative.ui.component.dialog.state.MessageDialogState
 import app.gamenative.utils.MarkerUtils
 import java.io.File
 import app.gamenative.ui.data.AppMenuOption
 import app.gamenative.ui.data.GameDisplayInfo
+import app.gamenative.ui.component.dialog.StoreInstallDialog
 import app.gamenative.ui.enums.AppOptionMenuType
+import app.gamenative.ui.enums.DialogType
+import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.ContainerUtils.getContainer
 import com.winlator.container.ContainerData
 import java.util.Locale
@@ -49,6 +57,7 @@ class GOGAppScreen : BaseAppScreen() {
 
         // Shared state for uninstall dialog - list of appIds that should show the dialog
         private val uninstallDialogAppIds = mutableStateListOf<String>()
+        private val installRequiredBytes = mutableStateMapOf<String, Long>()
 
         fun showUninstallDialog(appId: String) {
             Timber.tag(TAG).d("showUninstallDialog: appId=$appId")
@@ -140,13 +149,13 @@ class GOGAppScreen : BaseAppScreen() {
 
         // Listen for install status changes to refresh game data
         LaunchedEffect(gameId) {
-            val installListener: (app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged) -> Unit = { event ->
+            val installListener: (AndroidEvent.LibraryInstallStatusChanged) -> Unit = { event ->
                 if (event.appId == libraryItem.gameId) {
                     Timber.tag(TAG).d("Install status changed, refreshing game data for $gameId")
                     refreshTrigger++
                 }
             }
-            app.gamenative.PluviaApp.events.on<app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged, Unit>(installListener)
+            PluviaApp.events.on<AndroidEvent.LibraryInstallStatusChanged, Unit>(installListener)
         }
 
         var gogGame by remember(gameId, refreshTrigger) { mutableStateOf<GOGGame?>(null) }
@@ -283,7 +292,7 @@ class GOGAppScreen : BaseAppScreen() {
         } else if (hasPartial) {
             // Match Steam behavior: resume immediately for partial downloads.
             Timber.tag(TAG).i("Resuming partial GOG download for: ${libraryItem.appId}")
-            performDownload(context, libraryItem, onClickPlay)
+            performDownload(context, libraryItem, onClickPlay = onClickPlay)
         } else {
             // Show install confirmation dialog
             showGOGInstallConfirmationDialog(context, libraryItem)
@@ -297,47 +306,43 @@ class GOGAppScreen : BaseAppScreen() {
             try {
                 val game = GOGService.getGOGGameOf(gameId)
 
-                // Calculate sizes
-                val downloadSize = app.gamenative.utils.StorageUtils.formatBinarySize(game?.downloadSize ?: 0L)
-                val availableSpace = app.gamenative.utils.StorageUtils.formatBinarySize(
-                    app.gamenative.utils.StorageUtils.getAvailableSpace(app.gamenative.service.gog.GOGConstants.defaultGOGGamesPath)
-                )
-
-                val message = context.getString(
-                    R.string.gog_install_confirmation_message,
-                    downloadSize,
-                    availableSpace
-                )
-                val state = app.gamenative.ui.component.dialog.state.MessageDialogState(
+                val state = MessageDialogState(
                     visible = true,
-                    type = app.gamenative.ui.enums.DialogType.INSTALL_APP,
+                    type = DialogType.INSTALL_APP,
                     title = context.getString(R.string.gog_install_game_title),
-                    message = message,
+                    message = "",
                     confirmBtnText = context.getString(R.string.download),
                     dismissBtnText = context.getString(R.string.cancel)
                 )
-                BaseAppScreen.showInstallDialog(libraryItem.appId, state)
+                withContext(Dispatchers.Main) {
+                    installRequiredBytes[libraryItem.appId] = game?.let {
+                        maxOf(it.downloadSize, it.installSize)
+                    } ?: 0L
+                    BaseAppScreen.showInstallDialog(libraryItem.appId, state)
+                }
             } catch (e: Exception) {
                 Timber.e(e, "Failed to show install dialog for: ${libraryItem.appId}")
             }
         }
     }
 
-    private fun performDownload(context: Context, libraryItem: LibraryItem, onClickPlay: (Boolean) -> Unit) {
+    private fun performDownload(context: Context, libraryItem: LibraryItem, libraryId: String? = null, onClickPlay: (Boolean) -> Unit) {
         val gameId = libraryItem.gameId.toString()
         Timber.i("Starting GOG game download: ${libraryItem.appId}")
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // Get install path
-                val installPath = GOGConstants.getGameInstallPath(libraryItem.name)
                 val containerData = loadContainerData(context, libraryItem)
-
-                Timber.d("Downloading GOG game to: $installPath")
 
                 SnackbarManager.show("Starting download for ${libraryItem.name}...")
 
                 // Start download - GOGService will handle monitoring, database updates, verification, and events
-                val result = GOGService.downloadGame(context, gameId, installPath, containerData.language)
+                val result = if (libraryId != null) {
+                    GOGService.downloadGame(context, gameId, libraryId, containerData.language)
+                } else {
+                    val installPath = GOGService.getResumableInstallPath(gameId)
+                        ?: error("Partial GOG download has no persisted install path: $gameId")
+                    GOGService.downloadGameAtPath(context, gameId, installPath, containerData.language)
+                }
 
                 if (result.isSuccess) {
                     Timber.i("GOG download started successfully for: $gameId")
@@ -383,9 +388,9 @@ class GOGAppScreen : BaseAppScreen() {
         if (isDownloadingFlag || hasPartial) {
             showInstallDialog(
                 libraryItem.appId,
-                app.gamenative.ui.component.dialog.state.MessageDialogState(
+                MessageDialogState(
                     visible = true,
-                    type = app.gamenative.ui.enums.DialogType.CANCEL_APP_DOWNLOAD,
+                    type = DialogType.CANCEL_APP_DOWNLOAD,
                     title = context.getString(R.string.cancel_download_prompt_title),
                     message = context.getString(R.string.library_delete_download_message),
                     confirmBtnText = context.getString(R.string.yes),
@@ -457,8 +462,8 @@ class GOGAppScreen : BaseAppScreen() {
     override fun loadContainerData(context: Context, libraryItem: LibraryItem): ContainerData {
         Timber.tag(TAG).d("loadContainerData: appId=${libraryItem.appId}")
         // Load GOG-specific container data using ContainerUtils
-        val container = app.gamenative.utils.ContainerUtils.getOrCreateContainer(context, libraryItem.appId)
-        val containerData = app.gamenative.utils.ContainerUtils.toContainerData(container)
+        val container = ContainerUtils.getOrCreateContainer(context, libraryItem.appId)
+        val containerData = ContainerUtils.toContainerData(container)
         Timber.tag(TAG).d("loadContainerData: loaded container for ${libraryItem.appId}")
         return containerData
     }
@@ -467,7 +472,7 @@ class GOGAppScreen : BaseAppScreen() {
         Timber.tag(TAG).i("saveContainerConfig: appId=${libraryItem.appId}")
         val container = getContainer(context, libraryItem.appId)
         val previousLanguage = container.language
-        app.gamenative.utils.ContainerUtils.applyToContainer(context, libraryItem.appId, config)
+        ContainerUtils.applyToContainer(context, libraryItem.appId, config)
         Timber.tag(TAG).d("saveContainerConfig: saved container config for ${libraryItem.appId}")
 
         if (previousLanguage != config.language) {
@@ -481,10 +486,10 @@ class GOGAppScreen : BaseAppScreen() {
             if (!GOGService.isGameInstalled(gameId)) return@launch
             if (GOGService.getDownloadInfo(gameId)?.isActive() == true) return@launch
 
-            val installPath = GOGService.getInstallPath(gameId)
-                ?: GOGConstants.getGameInstallPath(libraryItem.name)
+            val installPath = GOGService.getResumableInstallPath(gameId)
+                ?: error("Installed GOG game has no persisted install path: $gameId")
 
-            GOGService.downloadGame(context, gameId, installPath, language)
+            GOGService.downloadGameAtPath(context, gameId, installPath, language)
         }
     }
 
@@ -515,9 +520,9 @@ class GOGAppScreen : BaseAppScreen() {
                 onClick = {
                     showInstallDialog(
                         libraryItem.appId,
-                        app.gamenative.ui.component.dialog.state.MessageDialogState(
+                        MessageDialogState(
                             visible = true,
-                            type = app.gamenative.ui.enums.DialogType.UPDATE_VERIFY_CONFIRM,
+                            type = DialogType.UPDATE_VERIFY_CONFIRM,
                             title = context.getString(R.string.library_verify_files_title),
                             message = context.getString(R.string.library_verify_files_message),
                             confirmBtnText = context.getString(R.string.proceed),
@@ -574,7 +579,7 @@ class GOGAppScreen : BaseAppScreen() {
         var currentProgressListener: ((Float) -> Unit)? = null
 
         // Listen for download status changes
-        val downloadStatusListener: (app.gamenative.events.AndroidEvent.DownloadStatusChanged) -> Unit = { event ->
+        val downloadStatusListener: (AndroidEvent.DownloadStatusChanged) -> Unit = { event ->
             Timber.tag(TAG).d("[OBSERVE] DownloadStatusChanged event received: event.appId=${event.appId}, libraryItem.gameId=${libraryItem.gameId}, match=${event.appId == libraryItem.gameId}")
             if (event.appId == libraryItem.gameId) {
                 Timber.tag(TAG).d("[OBSERVE] Download status changed for ${libraryItem.appId}, isDownloading=${event.isDownloading}")
@@ -614,31 +619,31 @@ class GOGAppScreen : BaseAppScreen() {
                 onStateChanged()
             }
         }
-        app.gamenative.PluviaApp.events.on<app.gamenative.events.AndroidEvent.DownloadStatusChanged, Unit>(downloadStatusListener)
+        PluviaApp.events.on<AndroidEvent.DownloadStatusChanged, Unit>(downloadStatusListener)
         disposables +=
-            { app.gamenative.PluviaApp.events.off<app.gamenative.events.AndroidEvent.DownloadStatusChanged, Unit>(downloadStatusListener) }
+            { PluviaApp.events.off<AndroidEvent.DownloadStatusChanged, Unit>(downloadStatusListener) }
 
         // Listen for install status changes
-        val installListener: (app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged) -> Unit = { event ->
+        val installListener: (AndroidEvent.LibraryInstallStatusChanged) -> Unit = { event ->
             Timber.tag(TAG).d("[OBSERVE] LibraryInstallStatusChanged event received: event.appId=${event.appId}, libraryItem.gameId=${libraryItem.gameId}, match=${event.appId == libraryItem.gameId}")
             if (event.appId == libraryItem.gameId) {
                 Timber.tag(TAG).d("[OBSERVE] Install status changed for ${libraryItem.appId}, calling onStateChanged()")
                 onStateChanged()
             }
         }
-        app.gamenative.PluviaApp.events.on<app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged, Unit>(installListener)
+        PluviaApp.events.on<AndroidEvent.LibraryInstallStatusChanged, Unit>(installListener)
         disposables +=
-            { app.gamenative.PluviaApp.events.off<app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged, Unit>(installListener) }
+            { PluviaApp.events.off<AndroidEvent.LibraryInstallStatusChanged, Unit>(installListener) }
 
-        val postInstallSyncListener: (app.gamenative.events.AndroidEvent.PostInstallSyncStatusChanged) -> Unit = { event ->
+        val postInstallSyncListener: (AndroidEvent.PostInstallSyncStatusChanged) -> Unit = { event ->
             if (event.appId == libraryItem.gameId) {
                 Timber.tag(TAG).d("[OBSERVE] PostInstallSyncStatusChanged for ${libraryItem.appId}, isSyncing=${event.isSyncing}")
                 onStateChanged()
             }
         }
-        app.gamenative.PluviaApp.events.on<app.gamenative.events.AndroidEvent.PostInstallSyncStatusChanged, Unit>(postInstallSyncListener)
+        PluviaApp.events.on<AndroidEvent.PostInstallSyncStatusChanged, Unit>(postInstallSyncListener)
         disposables +=
-            { app.gamenative.PluviaApp.events.off<app.gamenative.events.AndroidEvent.PostInstallSyncStatusChanged, Unit>(postInstallSyncListener) }
+            { PluviaApp.events.off<AndroidEvent.PostInstallSyncStatusChanged, Unit>(postInstallSyncListener) }
 
         // Return cleanup function
         return {
@@ -672,12 +677,12 @@ class GOGAppScreen : BaseAppScreen() {
         // Shared install dialog state (from BaseAppScreen)
         val appId = libraryItem.appId
         var installDialogState by remember(appId) {
-            mutableStateOf(BaseAppScreen.getInstallDialogState(appId) ?: app.gamenative.ui.component.dialog.state.MessageDialogState(false))
+            mutableStateOf(BaseAppScreen.getInstallDialogState(appId) ?: MessageDialogState(false))
         }
         LaunchedEffect(appId) {
             snapshotFlow { BaseAppScreen.getInstallDialogState(appId) }
                 .collect { state ->
-                    installDialogState = state ?: app.gamenative.ui.component.dialog.state.MessageDialogState(false)
+                    installDialogState = state ?: MessageDialogState(false)
                 }
         }
 
@@ -690,13 +695,13 @@ class GOGAppScreen : BaseAppScreen() {
                 BaseAppScreen.hideInstallDialog(appId)
             }
             val onConfirmClick: (() -> Unit)? = when (installDialogState.type) {
-                app.gamenative.ui.enums.DialogType.INSTALL_APP -> {
+                DialogType.INSTALL_APP -> {
                     {
                         BaseAppScreen.hideInstallDialog(appId)
                         performDownload(context, libraryItem) {}
                     }
                 }
-                app.gamenative.ui.enums.DialogType.CANCEL_APP_DOWNLOAD -> {
+                DialogType.CANCEL_APP_DOWNLOAD -> {
                     {
                         BaseAppScreen.hideInstallDialog(appId)
                         showDeletingDialog = true
@@ -735,12 +740,12 @@ class GOGAppScreen : BaseAppScreen() {
                         }
                     }
                 }
-                app.gamenative.ui.enums.DialogType.UPDATE_VERIFY_CONFIRM -> {
+                DialogType.UPDATE_VERIFY_CONFIRM -> {
                     {
                         BaseAppScreen.hideInstallDialog(appId)
                         val gameId = libraryItem.gameId.toString()
                         val installPath = GOGService.getInstallPath(gameId)
-                            ?: GOGConstants.getGameInstallPath(libraryItem.name)
+                            ?: error("Installed GOG game has no persisted install path: $gameId")
                         MarkerUtils.clearInstalledPrerequisiteMarkers(installPath)
                         val language = loadContainerData(context, libraryItem).language
                         triggerGOGVerifyDownload(context, libraryItem, language)
@@ -748,16 +753,33 @@ class GOGAppScreen : BaseAppScreen() {
                 }
                 else -> null
             }
-            app.gamenative.ui.component.dialog.MessageDialog(
-                visible = installDialogState.visible,
-                onDismissRequest = onDismissRequest,
-                onConfirmClick = onConfirmClick,
-                onDismissClick = onDismissClick,
-                confirmBtnText = installDialogState.confirmBtnText,
-                dismissBtnText = installDialogState.dismissBtnText,
-                title = installDialogState.title,
-                message = installDialogState.message,
-            )
+            if (installDialogState.type == DialogType.INSTALL_APP) {
+                StoreInstallDialog(
+                    source = GameSource.GOG,
+                    title = installDialogState.title ?: context.getString(R.string.gog_install_game_title),
+                    requiredBytes = installRequiredBytes[appId] ?: 0L,
+                    onInstall = { libraryId ->
+                        BaseAppScreen.hideInstallDialog(appId)
+                        installRequiredBytes.remove(appId)
+                        performDownload(context, libraryItem, libraryId) {}
+                    },
+                    onDismiss = {
+                        BaseAppScreen.hideInstallDialog(appId)
+                        installRequiredBytes.remove(appId)
+                    },
+                )
+            } else {
+                MessageDialog(
+                    visible = installDialogState.visible,
+                    onDismissRequest = onDismissRequest,
+                    onConfirmClick = onConfirmClick,
+                    onDismissClick = onDismissClick,
+                    confirmBtnText = installDialogState.confirmBtnText,
+                    dismissBtnText = installDialogState.dismissBtnText,
+                    title = installDialogState.title,
+                    message = installDialogState.message,
+                )
+            }
         }
 
         // Show deletion progress dialog

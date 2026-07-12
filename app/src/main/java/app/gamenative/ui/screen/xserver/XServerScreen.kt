@@ -96,6 +96,8 @@ import app.gamenative.externaldisplay.ExternalDisplaySwapController
 import app.gamenative.externaldisplay.SwapInputOverlayView
 import app.gamenative.service.AchievementWatcher
 import app.gamenative.service.SteamService
+import app.gamenative.service.GameRuntimeLifecycleRegistryImpl
+import app.gamenative.service.GameRuntimeState
 import app.gamenative.service.epic.EpicService
 import app.gamenative.service.gog.GOGService
 import app.gamenative.ui.component.QuickMenu
@@ -1953,7 +1955,10 @@ fun XServerScreen(
                         Thread(r, "WineSetup-Thread").apply { isDaemon = false }
                     }
 
+                    val runtimeToken = GameRuntimeLifecycleRegistryImpl.markStarting()
                     setupExecutor.submit {
+                        var createdEnvironment: XEnvironment? = null
+                        var setupFailed = false
                         try {
                             val containerManager = ContainerManager(context)
                             // Configure WinHandler with container's input API settings
@@ -2067,7 +2072,7 @@ fun XServerScreen(
 
                             changeWineAudioDriver(xServerState.value.audioDriver, container, ImageFs.find(context))
                             setImagefsContainerVariant(context, container)
-                            PluviaApp.xEnvironment = setupXEnvironment(
+                            createdEnvironment = setupXEnvironment(
                                 context,
                                 appId,
                                 bootToContainer,
@@ -2082,6 +2087,14 @@ fun XServerScreen(
                                 onGameLaunchError,
                                 isOffline
                             )
+                            val published = GameRuntimeLifecycleRegistryImpl.publishRunning(runtimeToken) {
+                                PluviaApp.xEnvironment = createdEnvironment
+                            }
+                            if (!published) {
+                                createdEnvironment?.stopEnvironmentComponents()
+                                createdEnvironment = null
+                                return@submit
+                            }
                             if (!PluviaApp.isActivityInForeground && !neverSuspend) {
                                 PluviaApp.xEnvironment?.onPause()
                                 if (manualResumeMode) {
@@ -2094,6 +2107,7 @@ fun XServerScreen(
                                 }
                             }
                         } catch (e: Exception) {
+                            setupFailed = true
                             Timber.e(e, "Error during wine setup operations")
                             try {
                                 PluviaApp.xEnvironment?.stopEnvironmentComponents()
@@ -2101,8 +2115,13 @@ fun XServerScreen(
                                 Timber.e(cleanupEx, "Error cleaning up environment after setup failure")
                             }
                             PluviaApp.xEnvironment = null
+                            GameRuntimeLifecycleRegistryImpl.requestStop()
                             onGameLaunchError?.invoke("Failed to setup wine: ${e.message}")
                         } finally {
+                            GameRuntimeLifecycleRegistryImpl.markSetupFinished(runtimeToken)
+                            if (setupFailed && GameRuntimeLifecycleRegistryImpl.state.value == GameRuntimeState.STOPPING) {
+                                GameRuntimeLifecycleRegistryImpl.markStopped(runtimeToken)
+                            }
                             setupExecutor.shutdown()
                         }
                     }

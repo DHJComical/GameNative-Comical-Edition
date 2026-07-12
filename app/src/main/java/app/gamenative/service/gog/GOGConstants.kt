@@ -143,8 +143,17 @@ object GOGConstants {
         }
 
     fun getGameInstallPath(gameTitle: String): String {
-        // Sanitize game title for filesystem
-        val sanitizedTitle = gameTitle.replace(Regex("[^a-zA-Z0-9 ]"), "").trim()
-        return Paths.get(defaultGOGGamesPath, sanitizedTitle).toString()
+        return getGameInstallPath(defaultGOGGamesPath, gameTitle)
     }
+
+    /** Resolves one game directory below an already validated GOG install root. */
+    fun getGameInstallPath(installRoot: String, gameTitle: String): String {
+        return Paths.get(installRoot, gameDirectoryName(gameTitle)).normalize().toString()
+    }
+
+    /** Returns the stable directory name used by legacy and managed GOG installations. */
+    fun gameDirectoryName(gameTitle: String): String =
+        gameTitle.replace(Regex("[^a-zA-Z0-9 ]"), "").trim().also {
+            require(it.isNotBlank()) { "GOG game title has no filesystem-safe characters" }
+        }
 }

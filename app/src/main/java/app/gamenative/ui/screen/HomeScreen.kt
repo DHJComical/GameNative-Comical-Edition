@@ -24,6 +24,7 @@ import app.gamenative.ui.screen.downloads.HomeDownloadsScreen
 import app.gamenative.ui.screen.downloads.DownloadsSection
 import app.gamenative.ui.screen.library.HomeLibraryScreen
 import app.gamenative.ui.screen.settings.SettingsScreen
+import app.gamenative.ui.screen.settings.GameLibrariesScreen
 import app.gamenative.ui.theme.PluviaTheme
 import com.materialkolor.PaletteStyle
 
@@ -47,6 +48,7 @@ fun HomeScreen(
     isOffline: Boolean = false,
 ) {
     val homeState by viewModel.homeState.collectAsStateWithLifecycle()
+    var gameLibraryOperationActive by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         HomeLibraryScreen(
@@ -83,7 +85,8 @@ fun HomeScreen(
         }
 
         AnimatedVisibility(
-            visible = homeState.currentDestination == HomeDestination.Storage,
+            visible = homeState.currentDestination == HomeDestination.Storage ||
+                homeState.currentDestination == HomeDestination.GameLibraries,
             enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
             exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
             modifier = Modifier.fillMaxSize(),
@@ -94,6 +97,19 @@ fun HomeScreen(
                 onClickPlay = onClickPlay,
                 onTestGraphics = onTestGraphics,
                 onPlayWithDiagnostics = onPlayWithDiagnostics,
+                onGameLibrariesClick = { viewModel.onDestination(HomeDestination.GameLibraries) },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = homeState.currentDestination == HomeDestination.GameLibraries,
+            enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            GameLibrariesScreen(
+                onBack = { viewModel.onDestination(HomeDestination.Storage) },
+                onOperationActiveChanged = { gameLibraryOperationActive = it },
             )
         }
 
@@ -115,7 +131,11 @@ fun HomeScreen(
 
     // Register after the layered pages so this takes priority over handlers in the retained Library UI.
     BackHandler {
-        if (homeState.currentDestination != HomeDestination.Library) {
+        if (homeState.currentDestination == HomeDestination.GameLibraries && gameLibraryOperationActive) {
+            return@BackHandler
+        } else if (homeState.currentDestination == HomeDestination.GameLibraries) {
+            viewModel.onDestination(HomeDestination.Storage)
+        } else if (homeState.currentDestination != HomeDestination.Library) {
             viewModel.onDestination(HomeDestination.Library)
         } else {
             onClickExit()

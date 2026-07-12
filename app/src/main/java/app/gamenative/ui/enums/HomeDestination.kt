@@ -17,4 +17,5 @@ enum class HomeDestination(@StringRes val title: Int, val icon: ImageVector) {
     Downloads(R.string.downloads_section_title, Icons.Filled.Download),
     Settings(R.string.settings_text, Icons.Filled.Settings),
     Storage(R.string.settings_storage_manage_title, Icons.Filled.Storage),
+    GameLibraries(R.string.game_libraries_title, Icons.Filled.Storage),
 }

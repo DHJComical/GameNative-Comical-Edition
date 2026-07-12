@@ -118,6 +118,7 @@ fun HomeDownloadsScreen(
     onClickPlay: (String, Boolean) -> Unit,
     onTestGraphics: (String) -> Unit,
     onPlayWithDiagnostics: (String) -> Unit,
+    onGameLibrariesClick: () -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -223,6 +224,7 @@ fun HomeDownloadsScreen(
 
                     DownloadsSection.Storage -> ContainerStorageManagerContent(
                         state = storageManagerState,
+                        onGameLibrariesClick = onGameLibrariesClick,
                         onOpenGame = { gameSource, appId, name, iconUrl ->
                             openGame(gameSource, appId.removePrefix("${gameSource.name}_"), name, iconUrl)
                         },

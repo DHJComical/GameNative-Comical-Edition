@@ -1,12 +1,16 @@
 package app.gamenative.service.gog
 
 import android.content.Context
+import app.gamenative.PluviaApp
 import app.gamenative.data.DownloadInfo
+import app.gamenative.data.GameSource
+import app.gamenative.events.AndroidEvent
 import app.gamenative.service.gog.api.DepotDirectory
 import app.gamenative.service.gog.api.DepotFile
 import app.gamenative.service.gog.api.DepotLink
 import app.gamenative.service.gog.api.FileChunk
 import app.gamenative.service.gog.api.GOGApiClient
+import app.gamenative.service.gog.api.GOGBuild
 import app.gamenative.service.gog.api.GOGManifestMeta
 import app.gamenative.service.gog.api.GOGManifestParser
 import app.gamenative.service.gog.api.V1DepotFile
@@ -139,8 +143,8 @@ class GOGDownloadManager @Inject constructor(
             Timber.tag("GOG").d("Database game ID: ${dbGame.id}, title: ${dbGame.title}")
 
             // Emit download started event so UI can attach progress listeners
-            app.gamenative.PluviaApp.events.emitJava(
-                app.gamenative.events.AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, true),
+            PluviaApp.events.emitJava(
+                AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, true),
             )
 
             downloadInfo.updateStatusMessage("Fetching builds...")
@@ -490,8 +494,8 @@ class GOGDownloadManager @Inject constructor(
             downloadInfo.emitProgressChange()
 
             // Emit download stopped event on failure
-            app.gamenative.PluviaApp.events.emitJava(
-                app.gamenative.events.AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, false),
+            PluviaApp.events.emitJava(
+                AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, false),
             )
 
             // Ensure in-progress marker is cleared on failure
@@ -548,30 +552,29 @@ class GOGDownloadManager @Inject constructor(
      */
     private suspend fun finalizeInstallSuccess(gameId: String, installPath: File, downloadInfo: DownloadInfo) {
         downloadInfo.updateStatusMessage("Updating database...")
-        try {
-            val game = gogManager.getGameFromDbById(gameId)
-            if (game != null) {
-                val installSize = calculateDirectorySize(installPath)
-                gogManager.updateGame(game.copy(isInstalled = true, installPath = installPath.absolutePath, installSize = installSize))
-                downloadInfo.clearPersistedBytesDownloaded(installPath.absolutePath)
-                Timber.tag("GOG").i("Updated database: game marked as installed, size: ${installSize / 1_000_000} MB")
-            } else {
-                Timber.tag("GOG").w("Game $gameId not found in database, skipping DB update")
-            }
-        } catch (e: Exception) {
-            Timber.tag("GOG").e(e, "Failed to update database for game $gameId")
-        }
+        val game = gogManager.getGameFromDbById(gameId)
+            ?: throw IllegalStateException("Cannot finalize unknown GOG game $gameId")
+        val installSize = calculateDirectorySize(installPath)
+        gogManager.updateGame(
+            game.copy(
+                isInstalled = true,
+                installPath = installPath.absolutePath,
+                installSize = installSize,
+            ),
+        )
+        downloadInfo.clearPersistedBytesDownloaded(installPath.absolutePath)
+        Timber.tag("GOG").i("Updated database: game marked as installed, size: ${installSize / 1_000_000} MB")
         downloadInfo.updateStatusMessage("Complete")
         downloadInfo.setProgress(1.0f)
         downloadInfo.setActive(false)
         downloadInfo.emitProgressChange()
         MarkerUtils.removeMarker(installPath.absolutePath, Marker.DOWNLOAD_IN_PROGRESS_MARKER)
         MarkerUtils.addMarker(installPath.absolutePath, Marker.DOWNLOAD_COMPLETE_MARKER)
-        app.gamenative.PluviaApp.events.emitJava(
-            app.gamenative.events.AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, false),
+        PluviaApp.events.emitJava(
+            AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, false),
         )
-        app.gamenative.PluviaApp.events.emitJava(
-            app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged(gameId.toIntOrNull() ?: 0, app.gamenative.data.GameSource.GOG),
+        PluviaApp.events.emitJava(
+            AndroidEvent.LibraryInstallStatusChanged(gameId.toIntOrNull() ?: 0, GameSource.GOG),
         )
     }
 
@@ -583,8 +586,8 @@ class GOGDownloadManager @Inject constructor(
         gameId: String,
         installPath: File,
         downloadInfo: DownloadInfo,
-        gameManifest: app.gamenative.service.gog.api.GOGManifestMeta,
-        selectedBuild: app.gamenative.service.gog.api.GOGBuild,
+        gameManifest: GOGManifestMeta,
+        selectedBuild: GOGBuild,
         language: String,
         withDlcs: Boolean,
         supportDir: File?,
@@ -770,8 +773,8 @@ class GOGDownloadManager @Inject constructor(
             downloadInfo.setProgress(-1.0f)
             downloadInfo.setActive(false)
             downloadInfo.emitProgressChange()
-            app.gamenative.PluviaApp.events.emitJava(
-                app.gamenative.events.AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, false),
+            PluviaApp.events.emitJava(
+                AndroidEvent.DownloadStatusChanged(gameId.toIntOrNull() ?: 0, false),
             )
             Result.failure(e)
         }
