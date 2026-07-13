@@ -29,12 +29,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +45,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -101,15 +104,56 @@ internal fun handleAddGamesSheetKey(
 
 internal fun shouldRequestInitialAddGameFocus(
     hasItems: Boolean,
+    focusTargetReady: Boolean,
+    focusEnabled: Boolean,
     initialFocusRequested: Boolean,
     userInteracted: Boolean,
-): Boolean = hasItems && !initialFocusRequested && !userInteracted
+): Boolean = hasItems && focusTargetReady && focusEnabled && !initialFocusRequested && !userInteracted
 
 internal fun shouldFocusAddGamesSheetRoot(
     requiresLogin: Boolean,
     hasError: Boolean,
     hasItems: Boolean,
 ): Boolean = requiresLogin || hasError || !hasItems
+
+@Composable
+internal fun Modifier.initialAddGameFocusTarget(
+    requester: FocusRequester,
+    selectedStore: AddGameStore,
+    appId: String,
+    userInteracted: Boolean,
+    focusEnabled: Boolean,
+): Modifier {
+    var placementGeneration by remember(selectedStore, appId) { mutableIntStateOf(0) }
+    var initialFocusRequested by remember(selectedStore, appId) { mutableStateOf(false) }
+    LaunchedEffect(
+        selectedStore,
+        appId,
+        placementGeneration,
+        focusEnabled,
+        initialFocusRequested,
+        userInteracted,
+    ) {
+        if (shouldRequestInitialAddGameFocus(
+                hasItems = true,
+                focusTargetReady = placementGeneration > 0,
+                focusEnabled = focusEnabled,
+                initialFocusRequested = initialFocusRequested,
+                userInteracted = userInteracted,
+            )
+        ) {
+            if (requester.requestFocus()) {
+                initialFocusRequested = true
+            }
+        }
+    }
+    return focusRequester(requester)
+        .onGloballyPositioned {
+            if (!initialFocusRequested && focusEnabled && !userInteracted) {
+                placementGeneration += 1
+            }
+        }
+}
 
 @Composable
 private fun AddGamesDragHandle() {
@@ -145,7 +189,6 @@ internal fun AddGamesBottomSheet(
     val rootFocusRequester = remember { FocusRequester() }
     val firstGameFocusRequester = remember { FocusRequester() }
     var userInteracted by remember(state.selectedStore) { mutableStateOf(false) }
-    var initialFocusRequested by remember(state.selectedStore) { mutableStateOf(false) }
     val selectStore: (AddGameStore) -> Unit = { store ->
         if (store == AddGameStore.LOCAL_FOLDER) onLocalFolder() else onStoreSelected(store)
     }
@@ -261,17 +304,6 @@ internal fun AddGamesBottomSheet(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     else -> {
-                        LaunchedEffect(state.selectedStore, state.items.isNotEmpty()) {
-                            if (shouldRequestInitialAddGameFocus(
-                                    hasItems = state.items.isNotEmpty(),
-                                    initialFocusRequested = initialFocusRequested,
-                                    userInteracted = userInteracted,
-                                )
-                            ) {
-                                firstGameFocusRequester.requestFocus()
-                                initialFocusRequested = true
-                            }
-                        }
                         LazyVerticalGrid(
                             state = gridState,
                             columns = GridCells.Adaptive(130.dp),
@@ -286,7 +318,14 @@ internal fun AddGamesBottomSheet(
                             ) { index, item ->
                                 AppItem(
                                     modifier = if (index == 0) {
-                                        Modifier.focusRequester(firstGameFocusRequester)
+                                        Modifier
+                                            .initialAddGameFocusTarget(
+                                                requester = firstGameFocusRequester,
+                                                selectedStore = state.selectedStore,
+                                                appId = item.appId,
+                                                userInteracted = userInteracted,
+                                                focusEnabled = sheetState.currentValue != SheetValue.Hidden,
+                                            )
                                     } else {
                                         Modifier
                                     },

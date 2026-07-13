@@ -61,10 +61,21 @@ class AddGamesBottomSheetTest {
     }
 
     @Test
-    fun `initial game focus never overrides user interaction or a completed request`() {
+    fun `initial game focus waits for its target and never overrides interaction`() {
+        assertFalse(
+            shouldRequestInitialAddGameFocus(
+                hasItems = true,
+                focusTargetReady = false,
+                focusEnabled = true,
+                initialFocusRequested = false,
+                userInteracted = false,
+            ),
+        )
         assertTrue(
             shouldRequestInitialAddGameFocus(
                 hasItems = true,
+                focusTargetReady = true,
+                focusEnabled = true,
                 initialFocusRequested = false,
                 userInteracted = false,
             ),
@@ -72,6 +83,8 @@ class AddGamesBottomSheetTest {
         assertFalse(
             shouldRequestInitialAddGameFocus(
                 hasItems = true,
+                focusTargetReady = true,
+                focusEnabled = true,
                 initialFocusRequested = false,
                 userInteracted = true,
             ),
@@ -79,7 +92,18 @@ class AddGamesBottomSheetTest {
         assertFalse(
             shouldRequestInitialAddGameFocus(
                 hasItems = true,
+                focusTargetReady = true,
+                focusEnabled = true,
                 initialFocusRequested = true,
+                userInteracted = false,
+            ),
+        )
+        assertFalse(
+            shouldRequestInitialAddGameFocus(
+                hasItems = true,
+                focusTargetReady = true,
+                focusEnabled = false,
+                initialFocusRequested = false,
                 userInteracted = false,
             ),
         )
