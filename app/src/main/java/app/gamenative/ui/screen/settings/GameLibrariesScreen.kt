@@ -45,9 +45,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -79,6 +77,10 @@ import app.gamenative.data.library.GameLibraryRepository
 import app.gamenative.data.library.GameLibrarySnapshot
 import app.gamenative.data.library.LibraryFileProgress
 import app.gamenative.data.library.customLibraryDisplayName
+import app.gamenative.ui.component.AppTabDensity
+import app.gamenative.ui.component.AppTabItem
+import app.gamenative.ui.component.AppTabLayout
+import app.gamenative.ui.component.AppTabRow
 import app.gamenative.ui.components.getPathFromTreeUri
 import app.gamenative.ui.screen.library.GameMigrationDialog
 import app.gamenative.ui.util.SnackbarManager
@@ -385,20 +387,18 @@ fun GameLibrariesScreen(
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-                ScrollableTabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    edgePadding = 12.dp,
-                ) {
-                    librarySources.forEachIndexed { index, source ->
-                        Tab(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            text = { Text(storeName(source)) },
-                        )
-                    }
-                }
+                AppTabRow(
+                    items = librarySources.mapIndexed { index, source ->
+                        AppTabItem(key = index, label = storeName(source))
+                    },
+                    selectedKey = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    density = AppTabDensity.Standard,
+                    layout = AppTabLayout.Scrollable,
+                )
 
                 val snapshot = state.snapshot
                 if (snapshot == null) {

@@ -28,10 +28,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,11 +45,14 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import app.gamenative.R
 import app.gamenative.data.LibraryItem
+import app.gamenative.ui.component.AppTabDensity
+import app.gamenative.ui.component.AppTabItem
+import app.gamenative.ui.component.AppTabLayout
+import app.gamenative.ui.component.AppTabRow
 import app.gamenative.ui.enums.PaneType
 import app.gamenative.ui.model.AddGameCatalogState
 import app.gamenative.ui.model.AddGameStore
@@ -198,25 +199,21 @@ internal fun AddGamesBottomSheet(
                 .focusable()
                 .focusGroup(),
         ) {
-            ScrollableTabRow(
-                selectedTabIndex = addGameStoreTabs.indexOf(state.selectedStore).coerceAtLeast(0),
-                edgePadding = 8.dp,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                addGameStoreTabs.forEach { store ->
-                    Tab(
-                        selected = store == state.selectedStore,
-                        onClick = { selectStore(store) },
-                        text = {
-                            Text(
-                                text = stringResource(store.labelResId()),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
+            AppTabRow(
+                items = addGameStoreTabs.map { store ->
+                    AppTabItem(
+                        key = store,
+                        label = stringResource(store.labelResId()),
                     )
-                }
-            }
+                },
+                selectedKey = state.selectedStore,
+                onTabSelected = selectStore,
+                density = AppTabDensity.Compact,
+                layout = AppTabLayout.Scrollable,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+            )
 
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
