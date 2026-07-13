@@ -10,6 +10,17 @@ import org.junit.Test
 
 class AddGamesBottomSheetTest {
     @Test
+    fun `drag handle keeps the material marker while reducing its header height`() {
+        assertEquals(32.dp, addGamesDragHandleWidth)
+        assertEquals(4.dp, addGamesDragHandleHeight)
+        assertEquals(8.dp, addGamesDragHandleVerticalPadding)
+        assertEquals(
+            20.dp,
+            addGamesDragHandleHeight + addGamesDragHandleVerticalPadding * 2,
+        )
+    }
+
+    @Test
     fun `sheet uses most of the viewport without exceeding compact windows`() {
         assertEquals(656.dp, addGamesSheetHeight(800))
         assertEquals(147.6.dp, addGamesSheetHeight(180))

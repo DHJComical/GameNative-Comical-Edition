@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -27,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +61,10 @@ internal val addGameStoreTabs = listOf(
     AddGameStore.AMAZON,
     AddGameStore.LOCAL_FOLDER,
 )
+
+internal val addGamesDragHandleWidth = 32.dp
+internal val addGamesDragHandleHeight = 4.dp
+internal val addGamesDragHandleVerticalPadding = 8.dp
 
 internal fun nextAddGameStore(current: AddGameStore, direction: Int): AddGameStore {
     val currentIndex = addGameStoreTabs.indexOf(current).coerceAtLeast(0)
@@ -102,6 +108,22 @@ internal fun shouldFocusAddGamesSheetRoot(
     hasItems: Boolean,
 ): Boolean = requiresLogin || hasError || !hasItems
 
+@Composable
+private fun AddGamesDragHandle() {
+    Surface(
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = Modifier.padding(vertical = addGamesDragHandleVerticalPadding),
+    ) {
+        Box(
+            modifier = Modifier.size(
+                width = addGamesDragHandleWidth,
+                height = addGamesDragHandleHeight,
+            ),
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun AddGamesBottomSheet(
@@ -139,6 +161,7 @@ internal fun AddGamesBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         sheetMaxWidth = Dp.Unspecified,
+        dragHandle = { AddGamesDragHandle() },
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
