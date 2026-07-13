@@ -16,16 +16,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,8 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
@@ -43,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import app.gamenative.BuildConfig
 import app.gamenative.R
 import app.gamenative.ui.component.AppTabDensity
+import app.gamenative.ui.component.AppTabDimensions
 import app.gamenative.ui.component.AppTabItem
 import app.gamenative.ui.component.AppTabLayout
 import app.gamenative.ui.component.AppTabRow
@@ -183,7 +181,7 @@ private fun CompactLibraryTabBar(
                 selectedKey = currentTab,
                 onTabSelected = onTabSelected,
                 modifier = Modifier
-                    .weight(1f),
+                    .weight(1f, fill = false),
                 density = AppTabDensity.Compact,
                 layout = AppTabLayout.Scrollable,
             )
@@ -224,7 +222,7 @@ private fun CompactIconButton(
 
     Box(
         modifier = modifier
-            .size(36.dp)
+            .size(AppTabDimensions.COMPACT_TRACK_HEIGHT)
             .clip(CircleShape)
             .background(
                 if (isFocused) {
@@ -331,7 +329,7 @@ private fun ExpandedLibraryTabBar(
                 selectedKey = currentTab,
                 onTabSelected = onTabSelected,
                 modifier = Modifier
-                    .weight(1f),
+                    .weight(1f, fill = false),
                 density = AppTabDensity.Standard,
                 layout = AppTabLayout.Scrollable,
             )
@@ -395,7 +393,7 @@ private fun IconActionButton(
                 scaleY = scale
                 this.alpha = alpha
             }
-            .size(44.dp)
+            .size(AppTabDimensions.STANDARD_TRACK_HEIGHT)
             .clip(CircleShape)
             .background(
                 brush = Brush.radialGradient(
