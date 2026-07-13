@@ -76,6 +76,7 @@ fun LibraryTabBar(
     onOptionsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onAddGameClick: () -> Unit,
+    showAddGameButton: Boolean = true,
     onMenuClick: () -> Unit,
     onNavigateDownToGrid: () -> Unit,
     onPreviousTab: () -> Unit = {},
@@ -92,6 +93,7 @@ fun LibraryTabBar(
             onOptionsClick = onOptionsClick,
             onSearchClick = onSearchClick,
             onAddGameClick = onAddGameClick,
+            showAddGameButton = showAddGameButton,
             onMenuClick = onMenuClick,
             onNavigateDownToGrid = onNavigateDownToGrid,
             onPreviousTab = onPreviousTab,
@@ -106,6 +108,7 @@ fun LibraryTabBar(
             onOptionsClick = onOptionsClick,
             onSearchClick = onSearchClick,
             onAddGameClick = onAddGameClick,
+            showAddGameButton = showAddGameButton,
             onMenuClick = onMenuClick,
             onNavigateDownToGrid = onNavigateDownToGrid,
             onPreviousTab = onPreviousTab,
@@ -127,6 +130,7 @@ private fun CompactLibraryTabBar(
     onOptionsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onAddGameClick: () -> Unit,
+    showAddGameButton: Boolean,
     onMenuClick: () -> Unit,
     onNavigateDownToGrid: () -> Unit,
     onPreviousTab: () -> Unit,
@@ -260,7 +264,7 @@ private fun CompactLibraryTabBar(
                 contentDescription = stringResource(R.string.search),
                 onClick = onSearchClick,
             )
-            if (!BuildConfig.MODERN_ANDROID) {
+            if (showAddGameButton && !BuildConfig.MODERN_ANDROID) {
                 CompactIconButton(
                     icon = Icons.Default.Add,
                     contentDescription = stringResource(R.string.action_add_game),
@@ -333,6 +337,7 @@ private fun ExpandedLibraryTabBar(
     onOptionsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onAddGameClick: () -> Unit,
+    showAddGameButton: Boolean,
     onMenuClick: () -> Unit,
     onNavigateDownToGrid: () -> Unit,
     onPreviousTab: () -> Unit,
@@ -481,7 +486,7 @@ private fun ExpandedLibraryTabBar(
                 onClick = onSearchClick,
             )
 
-            if (!BuildConfig.MODERN_ANDROID) {
+            if (showAddGameButton && !BuildConfig.MODERN_ANDROID) {
                 IconActionButton(
                     icon = Icons.Default.Add,
                     contentDescription = stringResource(R.string.action_add_game),

@@ -1252,6 +1252,8 @@
     <string name="action_refresh">Actualiser</string>
     <string name="action_details">Détails</string>
     <string name="action_add_game">Ajouter un jeu</string>
+    <string name="add_game_local_folder">Dossier local</string>
+    <string name="add_game_catalog_load_error">Impossible de charger cette bibliothèque de jeux.</string>
     <string name="action_system">Système</string>
 
     <!-- Search -->

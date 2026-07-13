@@ -1243,6 +1243,8 @@
     <string name="action_refresh">Aggiorna</string>
     <string name="action_details">Dettagli</string>
     <string name="action_add_game">Aggiungi gioco</string>
+    <string name="add_game_local_folder">Cartella locale</string>
+    <string name="add_game_catalog_load_error">Impossibile caricare questa raccolta di giochi.</string>
     <string name="action_system">Sistema</string>
 
     <!-- Search -->

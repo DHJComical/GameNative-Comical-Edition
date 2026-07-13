@@ -1077,6 +1077,8 @@
     <string name="action_refresh">Atualizar</string>
     <string name="action_details">Detalhes</string>
     <string name="action_add_game">Adicionar jogo</string>
+    <string name="add_game_local_folder">Pasta local</string>
+    <string name="add_game_catalog_load_error">Não foi possível carregar esta biblioteca de jogos.</string>
     <string name="action_system">Sistema</string>
 
     <!-- Search -->

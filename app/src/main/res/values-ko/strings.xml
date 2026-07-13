@@ -1249,6 +1249,8 @@
     <string name="action_refresh">새로고침</string>
     <string name="action_details">세부정보</string>
     <string name="action_add_game">게임 추가</string>
+    <string name="add_game_local_folder">로컬 폴더</string>
+    <string name="add_game_catalog_load_error">게임 라이브러리를 불러올 수 없습니다.</string>
     <string name="action_system">시스템</string>
 
     <!-- Search -->

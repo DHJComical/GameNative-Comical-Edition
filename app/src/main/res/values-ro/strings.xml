@@ -1252,6 +1252,8 @@
 	<string name="action_refresh">Reîmprospătează</string>
 	<string name="action_details">Detalii</string>
 	<string name="action_add_game">Adaugă joc</string>
+    <string name="add_game_local_folder">Folder local</string>
+    <string name="add_game_catalog_load_error">Această bibliotecă de jocuri nu a putut fi încărcată.</string>
 	<string name="action_system">Sistem</string>
 
 	<!-- Search -->

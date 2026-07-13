@@ -47,6 +47,10 @@ interface GOGGameDao {
     @Query("SELECT * FROM gog_games WHERE is_installed = 1 AND exclude = 0 ORDER BY title ASC")
     suspend fun getInstalledGames(): List<GOGGame>
 
+    /** Observes installed GOG games for installed-only library surfaces. */
+    @Query("SELECT * FROM gog_games WHERE is_installed = 1 AND exclude = 0 ORDER BY title ASC")
+    fun observeInstalledGames(): Flow<List<GOGGame>>
+
     @Query("SELECT * FROM gog_games WHERE is_installed = 0 AND exclude = 0")
     suspend fun getNonInstalledGames(): List<GOGGame>
 

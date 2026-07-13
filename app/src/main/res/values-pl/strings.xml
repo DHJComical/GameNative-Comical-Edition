@@ -1260,6 +1260,8 @@
     <string name="action_refresh">Odśwież</string>
     <string name="action_details">Szczegóły</string>
     <string name="action_add_game">Dodaj grę</string>
+    <string name="add_game_local_folder">Folder lokalny</string>
+    <string name="add_game_catalog_load_error">Nie udało się wczytać tej biblioteki gier.</string>
     <string name="action_system">System</string>
 
     <!-- Search -->

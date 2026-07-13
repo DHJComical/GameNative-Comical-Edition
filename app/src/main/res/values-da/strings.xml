@@ -1077,6 +1077,8 @@
     <string name="action_refresh">Opdater</string>
     <string name="action_details">Detaljer</string>
     <string name="action_add_game">Tilføj spil</string>
+    <string name="add_game_local_folder">Lokal mappe</string>
+    <string name="add_game_catalog_load_error">Spilbiblioteket kunne ikke indlæses.</string>
     <string name="action_system">System</string>
 
     <!-- Search -->

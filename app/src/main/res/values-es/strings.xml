@@ -1260,6 +1260,8 @@
     <string name="action_refresh">Actualizar</string>
     <string name="action_details">Detalles</string>
     <string name="action_add_game">Añadir juego</string>
+    <string name="add_game_local_folder">Carpeta local</string>
+    <string name="add_game_catalog_load_error">No se pudo cargar esta biblioteca de juegos.</string>
     <string name="action_system">Sistema</string>
 
     <!-- Search -->

@@ -1194,6 +1194,8 @@
     <string name="action_refresh">Aktualisieren</string>
     <string name="action_details">Details</string>
     <string name="action_add_game">Spiel hinzufügen</string>
+    <string name="add_game_local_folder">Lokaler Ordner</string>
+    <string name="add_game_catalog_load_error">Diese Spielebibliothek konnte nicht geladen werden.</string>
     <string name="action_system">System</string>
 
     <!-- Search -->

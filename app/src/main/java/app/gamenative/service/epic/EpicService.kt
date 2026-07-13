@@ -35,6 +35,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import app.gamenative.ui.util.SnackbarManager
 import timber.log.Timber
 
@@ -51,11 +53,13 @@ class EpicService : Service() {
 
         private const val ACTION_SYNC_LIBRARY = "app.gamenative.EPIC_SYNC_LIBRARY"
         private const val ACTION_MANUAL_SYNC = "app.gamenative.EPIC_MANUAL_SYNC"
+        private const val ACTION_DOWNLOAD_RECOVERY = "app.gamenative.EPIC_DOWNLOAD_RECOVERY"
         private const val SYNC_THROTTLE_MILLIS = 15 * 60 * 1000L // 15 minutes
 
         // Sync tracking variables
         private var syncInProgress: Boolean = false
         private var backgroundSyncJob: Job? = null
+        private val catalogSyncMutex = Mutex()
         private var lastSyncTimestamp: Long = 0L
         private var hasPerformedInitialSync: Boolean = false
 
@@ -94,6 +98,15 @@ class EpicService : Service() {
                 // Start service without sync action
             }
             context.startForegroundService(intent)
+        }
+
+        /** Starts persisted download recovery without refreshing the owned catalog. */
+        fun startForDownloadRecovery(context: Context) {
+            if (!isRunning) {
+                context.startForegroundService(Intent(context, EpicService::class.java).apply {
+                    action = ACTION_DOWNLOAD_RECOVERY
+                })
+            }
         }
 
         fun triggerLibrarySync(context: Context) {
@@ -398,9 +411,11 @@ class EpicService : Service() {
 
         suspend fun refreshLibrary(context: Context): Result<Int> {
             val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
-            val result = instance.epicManager.refreshLibrary(context)
-            if (result.isSuccess) instance.reconcileRegisteredInstallations()
-            return result
+            return catalogSyncMutex.withLock {
+                val result = instance.epicManager.refreshLibrary(context)
+                if (result.isSuccess) instance.reconcileRegisteredInstallations()
+                result
+            }
         }
 
         suspend fun fetchManifestSizes(context: Context, appId: Int): EpicManager.ManifestSizes {
@@ -939,20 +954,9 @@ class EpicService : Service() {
                 true
             }
 
-            null -> {
-                // Service restarted by Android with null intent (START_STICKY behavior)
-                // Only sync if we haven't done initial sync yet, or if it's been a while
-                val timeSinceLastSync = System.currentTimeMillis() - lastSyncTimestamp
-                val shouldResync = !hasPerformedInitialSync || timeSinceLastSync >= SYNC_THROTTLE_MILLIS
+            ACTION_DOWNLOAD_RECOVERY -> false
 
-                if (shouldResync) {
-                    Timber.tag("EPIC").i("Service restarted by Android - performing sync (hasPerformedInitialSync=$hasPerformedInitialSync, timeSinceLastSync=${timeSinceLastSync}ms)")
-                    true
-                } else {
-                    Timber.tag("EPIC").d("Service restarted by Android - skipping sync (throttled)")
-                    false
-                }
-            }
+            null -> false
 
             else -> {
                 // Service started without sync action (e.g., just to keep it alive)
@@ -970,7 +974,9 @@ class EpicService : Service() {
                 try {
                     setSyncInProgress(true)
                     Timber.tag("EPIC").d("Starting background library sync")
-                    val syncResult = epicManager.startBackgroundSync(applicationContext)
+                    val syncResult = catalogSyncMutex.withLock {
+                        epicManager.startBackgroundSync(applicationContext)
+                    }
                     if (syncResult.isFailure) {
                         Timber.w("Failed to start background sync: ${syncResult.exceptionOrNull()?.message}")
                     } else {

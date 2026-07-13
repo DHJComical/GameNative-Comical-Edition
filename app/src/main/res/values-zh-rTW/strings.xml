@@ -1231,6 +1231,8 @@
     <string name="action_refresh">重新整理</string>
     <string name="action_details">詳情</string>
     <string name="action_add_game">新增遊戲</string>
+    <string name="add_game_local_folder">本機資料夾</string>
+    <string name="add_game_catalog_load_error">無法載入此遊戲庫。</string>
     <string name="action_system">系統</string>
 
     <!-- Search -->

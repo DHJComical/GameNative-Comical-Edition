@@ -1229,6 +1229,8 @@
     <string name="action_refresh">刷新</string>
     <string name="action_details">详情</string>
     <string name="action_add_game">添加游戏</string>
+    <string name="add_game_local_folder">本地文件夹</string>
+    <string name="add_game_catalog_load_error">无法加载此游戏库。</string>
     <string name="action_system">系统</string>
 
     <!-- Search -->

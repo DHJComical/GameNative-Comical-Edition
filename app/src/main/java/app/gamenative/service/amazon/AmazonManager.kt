@@ -18,13 +18,15 @@ class AmazonManager @Inject constructor(
 ) {
 
     /** Refresh the Amazon library from API and persist it in DB. */
-    suspend fun refreshLibrary() = withContext(Dispatchers.IO) {
+    suspend fun refreshLibrary(): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
         Timber.i("[Amazon] Starting library refresh…")
 
         val credentialsResult = AmazonAuthManager.getStoredCredentials(context)
         if (credentialsResult.isFailure) {
             Timber.w("[Amazon] No stored credentials — ${credentialsResult.exceptionOrNull()?.message}")
-            return@withContext
+            throw credentialsResult.exceptionOrNull()
+                ?: IllegalStateException("Amazon credentials are unavailable")
         }
         val credentials = credentialsResult.getOrNull()!!
 
@@ -35,11 +37,14 @@ class AmazonManager @Inject constructor(
 
         if (games.isEmpty()) {
             Timber.w("[Amazon] No entitlements returned from API")
-            return@withContext
+            amazonGameDao.deleteAllNonInstalledGames()
+            return@runCatching 0
         }
 
         amazonGameDao.upsertPreservingInstallStatus(games)
         Timber.i("[Amazon] Library refresh complete — ${games.size} game(s) in DB")
+        games.size
+        }
     }
 
     /** Look up a game by product ID. */

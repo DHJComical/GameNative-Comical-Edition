@@ -34,6 +34,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
@@ -82,6 +84,8 @@ import app.gamenative.data.GameCompatibilityStatus
 import app.gamenative.data.GameSource
 import app.gamenative.data.LibraryItem
 import app.gamenative.events.AndroidEvent
+import app.gamenative.events.SteamEvent
+import app.gamenative.enums.LoginResult
 import app.gamenative.ui.component.GamepadAction
 import app.gamenative.ui.component.GamepadActionBar
 import app.gamenative.ui.component.GamepadButton
@@ -95,6 +99,9 @@ import app.gamenative.ui.enums.PaneType
 import app.gamenative.ui.enums.SortOption
 import app.gamenative.ui.internal.fakeAppInfo
 import app.gamenative.ui.model.LibraryViewModel
+import app.gamenative.ui.model.AddGameCatalogState
+import app.gamenative.ui.model.AddGameCatalogViewModel
+import app.gamenative.ui.model.AddGameStore
 import app.gamenative.service.SteamService
 import app.gamenative.ui.screen.library.components.LibraryCarouselPane
 import app.gamenative.ui.screen.library.components.LibraryDetailPane
@@ -103,6 +110,7 @@ import app.gamenative.ui.screen.library.components.LibraryOptionsPanel
 import app.gamenative.ui.screen.library.components.LibrarySearchBar
 import app.gamenative.ui.screen.library.components.LibrarySourceNotLoggedInSplash
 import app.gamenative.ui.screen.library.components.LibraryTabBar
+import app.gamenative.ui.screen.library.components.AddGamesBottomSheet
 import app.gamenative.ui.screen.auth.AmazonOAuthActivity
 import app.gamenative.ui.screen.auth.EpicOAuthActivity
 import app.gamenative.ui.screen.auth.GOGOAuthActivity
@@ -119,6 +127,8 @@ import app.gamenative.utils.SteamUtils
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 import android.os.SystemClock
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 
 private const val LIBRARY_ROTARY_INTERACTION_THRESHOLD_PX = 0.5f
 
@@ -126,6 +136,7 @@ private const val LIBRARY_ROTARY_INTERACTION_THRESHOLD_PX = 0.5f
 @Composable
 fun HomeLibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
+    addGameCatalogViewModel: AddGameCatalogViewModel = hiltViewModel(),
     onClickPlay: (String, Boolean) -> Unit,
     onTestGraphics: (String) -> Unit,
     onPlayWithDiagnostics: (String) -> Unit,
@@ -137,12 +148,22 @@ fun HomeLibraryScreen(
     isOffline: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val addGameCatalogState by addGameCatalogViewModel.state.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    LaunchedEffect(state.appInfoSortType) {
+        addGameCatalogViewModel.updateSteamAppTypeFilters(state.appInfoSortType)
+    }
 
     LibraryScreenContent(
         state = state,
         listState = viewModel.listState,
         sheetState = sheetState,
+        addGameCatalogState = addGameCatalogState,
+        onOpenAddGameCatalog = addGameCatalogViewModel::open,
+        onCloseAddGameCatalog = addGameCatalogViewModel::close,
+        onAddGameStoreSelected = addGameCatalogViewModel::selectStore,
+        onRefreshAddGameCatalog = addGameCatalogViewModel::refresh,
         onFilterChanged = viewModel::onFilterChanged,
         onPageChange = viewModel::onPageChange,
         onModalBottomSheet = viewModel::onModalBottomSheet,
@@ -271,6 +292,11 @@ private fun LibraryScreenContent(
     state: LibraryState,
     listState: LazyGridState,
     sheetState: SheetState,
+    addGameCatalogState: AddGameCatalogState,
+    onOpenAddGameCatalog: () -> Unit,
+    onCloseAddGameCatalog: () -> Unit,
+    onAddGameStoreSelected: (AddGameStore) -> Unit,
+    onRefreshAddGameCatalog: () -> Unit,
     onFilterChanged: (AppFilter) -> Unit,
     onPageChange: (Int) -> Unit,
     onModalBottomSheet: (Boolean) -> Unit,
@@ -329,6 +355,7 @@ private fun LibraryScreenContent(
                 },
                 onSuccess = {
                     SnackbarManager.show(context.getString(R.string.gog_login_success_title))
+                    onAddGameStoreSelected(AddGameStore.GOG)
                 },
                 onDialogClose = { },
             )
@@ -364,6 +391,7 @@ private fun LibraryScreenContent(
                 },
                 onSuccess = {
                     SnackbarManager.show(context.getString(R.string.epic_login_success_title))
+                    onAddGameStoreSelected(AddGameStore.EPIC)
                 },
                 onDialogClose = { },
             )
@@ -399,6 +427,7 @@ private fun LibraryScreenContent(
                 },
                 onSuccess = {
                     SnackbarManager.show(context.getString(R.string.amazon_login_success_title))
+                    onAddGameStoreSelected(AddGameStore.AMAZON)
                 },
                 onDialogClose = { },
             )
@@ -558,6 +587,13 @@ private fun LibraryScreenContent(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { }
 
+    var storeBeforeFolderPicker by remember { mutableStateOf(AddGameStore.STEAM) }
+    val restoreStoreAfterFolderPicker: () -> Unit = {
+        if (addGameCatalogState.isOpen) {
+            onAddGameStoreSelected(storeBeforeFolderPicker)
+        }
+    }
+
     val folderPicker = rememberCustomGameFolderPicker(
         onPathSelected = { path ->
             // When a folder is selected via OpenDocumentTree, the user has already granted
@@ -576,10 +612,13 @@ private fun LibraryScreenContent(
                 requestPermissionsForPath(context, path, storagePermissionLauncher)
             }
             onAddCustomGameFolder(path)
+            onCloseAddGameCatalog()
         },
         onFailure = { message ->
             SnackbarManager.show(message)
+            restoreStoreAfterFolderPicker()
         },
+        onCancel = restoreStoreAfterFolderPicker,
     )
 
     // Handle opening folder picker (with dialog check)
@@ -588,6 +627,40 @@ private fun LibraryScreenContent(
             showAddCustomGameDialog = true
         } else {
             folderPicker.launchPicker()
+        }
+    }
+
+    val launchAddGameStoreLogin: (AddGameStore) -> Unit = { store ->
+        when (store) {
+            AddGameStore.STEAM -> onGoOnline()
+            AddGameStore.GOG -> gogOAuthLauncher.launch(Intent(context, GOGOAuthActivity::class.java))
+            AddGameStore.EPIC -> epicOAuthLauncher.launch(Intent(context, EpicOAuthActivity::class.java))
+            AddGameStore.AMAZON -> amazonOAuthLauncher.launch(Intent(context, AmazonOAuthActivity::class.java))
+            AddGameStore.LOCAL_FOLDER -> throw IllegalStateException("Local folder does not require login")
+        }
+    }
+
+    LaunchedEffect(addGameCatalogState.isOpen, addGameCatalogState.requiresLogin, addGameCatalogState.selectedStore) {
+        if (!addGameCatalogState.isOpen || !addGameCatalogState.requiresLogin) return@LaunchedEffect
+        if (addGameCatalogState.selectedStore == AddGameStore.STEAM && SteamService.isLoggedIn) {
+            onAddGameStoreSelected(AddGameStore.STEAM)
+        } else {
+            launchAddGameStoreLogin(addGameCatalogState.selectedStore)
+        }
+    }
+
+    val latestAddGameState by rememberUpdatedState(addGameCatalogState)
+    val latestSelectAddGameStore by rememberUpdatedState(onAddGameStoreSelected)
+    DisposableEffect(Unit) {
+        val onSteamLogonEnded: (SteamEvent.LogonEnded) -> Unit = { event ->
+            val current = latestAddGameState
+            if (event.loginResult == LoginResult.Success && current.isOpen && current.selectedStore == AddGameStore.STEAM) {
+                latestSelectAddGameStore(AddGameStore.STEAM)
+            }
+        }
+        PluviaApp.events.on<SteamEvent.LogonEnded, Unit>(onSteamLogonEnded)
+        onDispose {
+            PluviaApp.events.off<SteamEvent.LogonEnded, Unit>(onSteamLogonEnded)
         }
     }
 
@@ -790,6 +863,7 @@ private fun LibraryScreenContent(
             !rootHasFocus
     }
     val latestInitialLoadComplete by rememberUpdatedState(state.initialLoadComplete)
+    val latestAddGameCatalogOpen by rememberUpdatedState(addGameCatalogState.isOpen)
     val latestCanBootstrapContentFocus by rememberUpdatedState(canBootstrapContentFocus)
     val latestCanNavigateTabsWithoutFocus by rememberUpdatedState(canNavigateTabsWithoutFocus)
     val latestOnLibraryUserInteraction by rememberUpdatedState(onLibraryUserInteraction)
@@ -801,7 +875,7 @@ private fun LibraryScreenContent(
     DisposableEffect(Unit) {
         val onGlobalKeyEvent: (AndroidEvent.KeyEvent) -> Boolean = { androidEvent ->
             val event = androidEvent.event
-            if (!isLibraryGlobalControllerKey(event.action, event.keyCode)) {
+            if (latestAddGameCatalogOpen || !isLibraryGlobalControllerKey(event.action, event.keyCode)) {
                 false
             } else {
                 reportLibraryInteractionIfReady(latestInitialLoadComplete, latestOnLibraryUserInteraction)
@@ -908,6 +982,7 @@ private fun LibraryScreenContent(
                 reportLibraryInteractionIfReady(state.initialLoadComplete, onLibraryUserInteraction)
             }
             .onPreviewKeyEvent { keyEvent ->
+                if (addGameCatalogState.isOpen) return@onPreviewKeyEvent false
                 // TODO: consider abstracting this
                 // Handle gamepad buttons
                 if (state.initialLoadComplete && isLibraryKeyDown(keyEvent.nativeKeyEvent.action)) {
@@ -1002,8 +1077,8 @@ private fun LibraryScreenContent(
 
                         // X button - add custom game
                         KeyEvent.KEYCODE_BUTTON_X -> {
-                            if (!BuildConfig.MODERN_ANDROID && selectedAppId == null && !state.isSearching && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
-                                onAddCustomGameClick()
+                            if (selectedAppId == null && !state.isSearching && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                                onOpenAddGameCatalog()
                                 true
                             } else {
                                 false
@@ -1045,9 +1120,10 @@ private fun LibraryScreenContent(
                 // When on Steam/GOG/Epic/Amazon tab and not logged in, or LOCAL tab with no custom games, show splash
                 val showEmptyStateSplash = when (state.currentTab) {
                     LibraryTab.STEAM -> !SteamUtils.hasStoredCredentials() && !state.isLoading
-                    LibraryTab.GOG -> !GOGService.hasStoredCredentials(context)
-                    LibraryTab.EPIC -> !EpicService.hasStoredCredentials(context)
-                    LibraryTab.AMAZON -> !AmazonService.hasStoredCredentials(context)
+                    LibraryTab.GOG,
+                    LibraryTab.EPIC,
+                    LibraryTab.AMAZON,
+                    -> false
                     LibraryTab.LOCAL -> PrefManager.customGamesCount == 0
                     else -> false
                 }
@@ -1175,8 +1251,9 @@ private fun LibraryScreenContent(
                         },
                         onAddGameClick = {
                             onLibraryUserInteraction()
-                            onAddCustomGameClick()
+                            onOpenAddGameCatalog()
                         },
+                        showAddGameButton = false,
                         onMenuClick = {
                             onLibraryUserInteraction()
                             isSystemMenuOpen = true
@@ -1273,7 +1350,7 @@ private fun LibraryScreenContent(
                         GamepadAction(
                             button = GamepadButton.X,
                             labelResId = R.string.action_add_game,
-                            onClick = onAddCustomGameClick,
+                            onClick = onOpenAddGameCatalog,
                         ),
                     )
                 } else {
@@ -1286,6 +1363,26 @@ private fun LibraryScreenContent(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 visible = true,
             )
+        }
+
+        if (selectedAppId == null &&
+            !state.isSearching &&
+            !state.isOptionsPanelOpen &&
+            !isSystemMenuOpen &&
+            !addGameCatalogState.isOpen
+        ) {
+            FloatingActionButton(
+                onClick = onOpenAddGameCatalog,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = 72.dp)
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.End)),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.action_add_game),
+                )
+            }
         }
 
         // Options panel (SELECT) - renders on top of everything
@@ -1412,6 +1509,32 @@ private fun LibraryScreenContent(
                 },
             )
         }
+
+        if (addGameCatalogState.isOpen) {
+            AddGamesBottomSheet(
+                sheetState = sheetState,
+                state = addGameCatalogState,
+                onStoreSelected = onAddGameStoreSelected,
+                onLocalFolder = {
+                    storeBeforeFolderPicker = addGameCatalogState.selectedStore
+                    onAddGameStoreSelected(AddGameStore.LOCAL_FOLDER)
+                    folderPicker.launchPicker()
+                },
+                onGameClick = { item ->
+                    selectedAppId = item.appId
+                    selectedLibraryItem = item
+                    onCloseAddGameCatalog()
+                },
+                onRetry = {
+                    if (addGameCatalogState.requiresLogin) {
+                        launchAddGameStoreLogin(addGameCatalogState.selectedStore)
+                    } else {
+                        onRefreshAddGameCatalog()
+                    }
+                },
+                onDismiss = onCloseAddGameCatalog,
+            )
+        }
     }
 }
 
@@ -1462,6 +1585,11 @@ private fun Preview_LibraryScreenContent() {
             listState = rememberLazyGridState(),
             state = state,
             sheetState = sheetState,
+            addGameCatalogState = AddGameCatalogState(),
+            onOpenAddGameCatalog = { },
+            onCloseAddGameCatalog = { },
+            onAddGameStoreSelected = { },
+            onRefreshAddGameCatalog = { },
             onIsSearching = {},
             onSearchQuery = {},
             onFilterChanged = { },

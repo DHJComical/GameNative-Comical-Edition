@@ -150,8 +150,22 @@ interface SteamAppDao {
     suspend fun getAllAsList(): List<SteamApp>
 
     /** Returns installed Steam apps (joined against app_info) sorted by name. */
-    @Query("SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id WHERE app_info.is_downloaded = 1 ORDER BY steam_app.name ASC")
-    suspend fun getInstalledGames(): List<SteamApp>
+    @Query(
+        "SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id " +
+            "WHERE app_info.is_downloaded = 1 AND steam_app.id != 480 " +
+            "AND steam_app.package_id != :invalidPkgId AND steam_app.type != 0 " +
+            "ORDER BY LOWER(steam_app.name), steam_app.id",
+    )
+    suspend fun getInstalledGames(invalidPkgId: Int = INVALID_PKG_ID): List<SteamApp>
+
+    /** Observes installed Steam apps for installed-only library surfaces. */
+    @Query(
+        "SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id " +
+            "WHERE app_info.is_downloaded = 1 AND steam_app.id != 480 " +
+            "AND steam_app.package_id != :invalidPkgId AND steam_app.type != 0 " +
+            "ORDER BY LOWER(steam_app.name), steam_app.id",
+    )
+    fun observeInstalledGames(invalidPkgId: Int = INVALID_PKG_ID): Flow<List<SteamApp>>
 
     @Query("SELECT * FROM steam_app AS app WHERE dlc_for_app_id = :appId AND depots <> '{}' AND " +
             " EXISTS (" +

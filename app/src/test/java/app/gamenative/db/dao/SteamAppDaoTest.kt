@@ -3,6 +3,7 @@ package app.gamenative.db.dao
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.gamenative.data.AppInfo
 import app.gamenative.data.SteamApp
 import app.gamenative.data.SteamLicense
 import app.gamenative.db.PluviaDatabase
@@ -190,5 +191,33 @@ class SteamAppDaoTest {
 
         val apps = appDao.getAllOwnedApps().first()
         assertEquals(listOf("alpha", "Beta", "Zelda"), apps.map { it.name })
+    }
+
+    @Test
+    fun `installed flow only returns apps with completed app info`() = runBlocking {
+        appDao.insert(makeApp(id = 1, packageId = 101).copy(name = "Installed"))
+        appDao.insert(makeApp(id = 2, packageId = 102).copy(name = "Incomplete"))
+        appDao.insert(makeApp(id = 3, packageId = 103).copy(name = "No app info"))
+        db.appInfoDao().insert(AppInfo(id = 1, isDownloaded = true))
+        db.appInfoDao().insert(AppInfo(id = 2, isDownloaded = false))
+
+        val apps = appDao.observeInstalledGames().first()
+
+        assertEquals(listOf(1), apps.map { it.id })
+    }
+
+    @Test
+    fun `installed flow excludes invalid apps but keeps completed app without active license`() = runBlocking {
+        appDao.insert(makeApp(id = 1, packageId = 101))
+        appDao.insert(makeApp(id = 480, packageId = 102))
+        appDao.insert(makeApp(id = 2, packageId = INVALID_PKG_ID))
+        appDao.insert(makeApp(id = 3, packageId = 103, type = AppType.invalid))
+        listOf(1, 480, 2, 3).forEach { id ->
+            db.appInfoDao().insert(AppInfo(id = id, isDownloaded = true))
+        }
+
+        val apps = appDao.observeInstalledGames().first()
+
+        assertEquals(listOf(1), apps.map { it.id })
     }
 }

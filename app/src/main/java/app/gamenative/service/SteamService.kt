@@ -276,19 +276,59 @@ class SteamService : Service(), IChallengeUrlChanged {
 
     private var retryAttempt = 0
 
-    private val appPicsChannel = Channel<List<PICSRequest>>(
+    private data class PicsBatch(
+        val requests: List<PICSRequest>,
+        val catalogGeneration: Long? = null,
+    )
+
+    private class StaleCatalogBatchException : Exception()
+
+    private val catalogGenerationTracker = CatalogGenerationTracker()
+
+    private fun isCurrentCatalogBatch(batch: PicsBatch): Boolean =
+        catalogGenerationTracker.accepts(batch.catalogGeneration)
+
+    private suspend fun sendCatalogAppBatch(requests: List<PICSRequest>, generation: Long): Boolean {
+        if (!catalogGenerationTracker.register(generation)) return false
+        return try {
+            appPicsChannel.send(PicsBatch(requests, generation))
+            true
+        } catch (error: Exception) {
+            catalogGenerationTracker.fail(generation, error)
+            throw error
+        }
+    }
+
+    private suspend fun sendCatalogPackageBatch(requests: List<PICSRequest>, generation: Long): Boolean {
+        if (!catalogGenerationTracker.register(generation)) return false
+        return try {
+            packagePicsChannel.send(PicsBatch(requests, generation))
+            true
+        } catch (error: Exception) {
+            catalogGenerationTracker.fail(generation, error)
+            throw error
+        }
+    }
+
+    private fun completeCatalogBatch(batch: PicsBatch) {
+        batch.catalogGeneration?.let(catalogGenerationTracker::complete)
+    }
+
+    private val appPicsChannel = Channel<PicsBatch>(
         capacity = 1_000,
         onBufferOverflow = BufferOverflow.SUSPEND,
         onUndeliveredElement = { droppedApps ->
-            Timber.w("App PICS Channel dropped: ${droppedApps.size} apps")
+            Timber.w("App PICS Channel dropped: ${droppedApps.requests.size} apps")
+            completeCatalogBatch(droppedApps)
         },
     )
 
-    private val packagePicsChannel = Channel<List<PICSRequest>>(
+    private val packagePicsChannel = Channel<PicsBatch>(
         capacity = 1_000,
         onBufferOverflow = BufferOverflow.SUSPEND,
         onUndeliveredElement = { droppedPackages ->
-            Timber.w("Package PICS Channel dropped: ${droppedPackages.size} packages")
+            Timber.w("Package PICS Channel dropped: ${droppedPackages.requests.size} packages")
+            completeCatalogBatch(droppedPackages)
         },
     )
 
@@ -938,13 +978,53 @@ class SteamService : Service(), IChallengeUrlChanged {
                     .chunked(MAX_PICS_BUFFER)
                     .forEach { chunk ->
                         val requests = chunk.map { PICSRequest(id = it) }
-                        service.appPicsChannel.send(requests)
+                        val generation = service.catalogGenerationTracker.current() ?: return@withContext 0
+                        if (!service.sendCatalogAppBatch(requests, generation)) return@withContext 0
                     }
 
                 missingAppIds.size
-            }.onFailure { error ->
+            }.getOrElse { error ->
                 Timber.tag("SteamService").e(error, "Failed to refresh owned games from server")
-            }.getOrDefault(0)
+                throw error
+            }
+        }
+
+        /** Starts a cancellable owned-catalog metadata session and returns its generation. */
+        suspend fun beginCatalogSession(): Long = withContext(Dispatchers.IO) {
+            val service = instance ?: throw IllegalStateException("Steam service is not available")
+            check(isLoggedIn) { "Steam is not logged in" }
+            val generation = service.catalogGenerationTracker.begin()
+            try {
+                service.licenseDao.getAllLicenses()
+                    .map { PICSRequest(it.packageId, it.accessToken) }
+                    .chunked(MAX_PICS_BUFFER)
+                    .forEach { requests ->
+                        if (!service.sendCatalogPackageBatch(requests, generation)) {
+                            throw CancellationException("Catalog generation ended while queueing packages")
+                        }
+                    }
+                generation
+            } catch (error: CancellationException) {
+                service.catalogGenerationTracker.end(generation)
+                throw error
+            } catch (error: Exception) {
+                service.catalogGenerationTracker.end(generation)
+                Timber.tag("SteamService").e(error, "Failed to begin catalog session")
+                throw error
+            }
+        }
+
+        /** Invalidates all queued and in-flight catalog work for the supplied generation. */
+        fun endCatalogSession(generation: Long) {
+            val service = instance ?: return
+            service.catalogGenerationTracker.end(generation)
+        }
+
+        /** Seals the root producer and waits for all queued and derived PICS work to persist. */
+        suspend fun awaitCatalogSession(generation: Long) {
+            val service = instance ?: throw IllegalStateException("Steam service is not available")
+            service.catalogGenerationTracker.seal(generation)
+            service.catalogGenerationTracker.await(generation)
         }
 
         /**
@@ -4514,13 +4594,15 @@ class SteamService : Service(), IChallengeUrlChanged {
                 }
 
                 // Get PICS information with the current license database.
-                licenseDao.getAllLicenses()
-                    .map { PICSRequest(it.packageId, it.accessToken) }
-                    .chunked(MAX_PICS_BUFFER)
-                    .forEach { chunk ->
-                        Timber.d("onLicenseList: Queueing ${chunk.size} package(s) for PICS")
-                        packagePicsChannel.send(chunk)
-                    }
+                catalogGenerationTracker.current()?.let { generation ->
+                    licenseDao.getAllLicenses()
+                        .map { PICSRequest(it.packageId, it.accessToken) }
+                        .chunked(MAX_PICS_BUFFER)
+                        .forEach { chunk ->
+                            Timber.d("onLicenseList: Queueing ${chunk.size} package(s) for catalog PICS")
+                            sendCatalogPackageBatch(chunk, generation)
+                        }
+                }
             }
         }
     }
@@ -4595,7 +4677,9 @@ class SteamService : Service(), IChallengeUrlChanged {
                         .forEach { chunk ->
                             ensureActive()
                             Timber.d("onPicsChanges: Queueing ${chunk.size} app(s) for PICS")
-                            appPicsChannel.send(chunk)
+                            catalogGenerationTracker.current()?.let { generation ->
+                                sendCatalogAppBatch(chunk, generation)
+                            }
                         }
                 }
 
@@ -4621,7 +4705,9 @@ class SteamService : Service(), IChallengeUrlChanged {
                             .chunked(MAX_PICS_BUFFER)
                             .forEach { chunk ->
                                 Timber.d("onPicsChanges: Queueing ${chunk.size} package(s) for PICS")
-                                packagePicsChannel.send(chunk)
+                                catalogGenerationTracker.current()?.let { generation ->
+                                    sendCatalogPackageBatch(chunk, generation)
+                                }
                             }
                     }
                 }
@@ -4640,9 +4726,12 @@ class SteamService : Service(), IChallengeUrlChanged {
         // Launch both coroutines within this parent job
         launch {
             appPicsChannel.receiveAsFlow()
-                .filter { it.isNotEmpty() }
+                .filter { it.requests.isNotEmpty() }
                 .buffer(capacity = MAX_PICS_BUFFER, onBufferOverflow = BufferOverflow.SUSPEND)
-                .collect { appRequests ->
+                .collect { batch ->
+                    try {
+                    if (!isCurrentCatalogBatch(batch)) return@collect
+                    val appRequests = batch.requests
                     Timber.d("Processing ${appRequests.size} app PICS requests")
 
                     ensureActive()
@@ -4655,6 +4744,8 @@ class SteamService : Service(), IChallengeUrlChanged {
                             packages = emptyList(),
                         ).await()
 
+                        if (!isCurrentCatalogBatch(batch)) return@collect
+
                         callback.results.forEachIndexed { index, picsCallback ->
                             Timber.d(
                                 "onPicsProduct: ${index + 1} of ${callback.results.size}" +
@@ -4663,6 +4754,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                             )
 
                             ensureActive()
+                            if (!isCurrentCatalogBatch(batch)) return@collect
                             val steamAppsMap = picsCallback.apps.values.mapNotNull { app ->
                                 val appFromDb = appDao.findApp(app.id)
                                 val packageId = appFromDb?.packageId ?: INVALID_PKG_ID
@@ -4696,23 +4788,40 @@ class SteamService : Service(), IChallengeUrlChanged {
                             }
 
                             if (steamAppsMap.isNotEmpty()) {
+                                if (!isCurrentCatalogBatch(batch)) return@collect
                                 Timber.i("Inserting ${steamAppsMap.size} PICS apps to database")
-                                db.withTransaction {
-                                    appDao.insertAll(steamAppsMap)
+                                try {
+                                    db.withTransaction {
+                                        appDao.insertAll(steamAppsMap)
+                                        if (!isCurrentCatalogBatch(batch)) throw StaleCatalogBatchException()
+                                    }
+                                } catch (_: StaleCatalogBatchException) {
+                                    return@collect
                                 }
                             }
                         }
                     } catch (e: AsyncJobFailedException) {
                         Timber.w("Could not get PICS product info $e")
+                        if (batch.catalogGeneration != null) throw e
+                    }
+                    } catch (error: Exception) {
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        batch.catalogGeneration?.let { catalogGenerationTracker.fail(it, error) }
+                        Timber.e(error, "App PICS consumer failed")
+                    } finally {
+                        completeCatalogBatch(batch)
                     }
                 }
         }
 
         launch {
             packagePicsChannel.receiveAsFlow()
-                .filter { it.isNotEmpty() }
+                .filter { it.requests.isNotEmpty() }
                 .buffer(capacity = MAX_PICS_BUFFER, onBufferOverflow = BufferOverflow.SUSPEND)
-                .collect { packageRequests ->
+                .collect { batch ->
+                    try {
+                    if (!isCurrentCatalogBatch(batch)) return@collect
+                    val packageRequests = batch.requests
                     Timber.d("Processing ${packageRequests.size} package PICS requests")
 
                     ensureActive()
@@ -4724,12 +4833,17 @@ class SteamService : Service(), IChallengeUrlChanged {
                         packages = packageRequests,
                     ).await()
 
+                    if (!isCurrentCatalogBatch(batch)) return@collect
+
                     callback.results.forEach { picsCallback ->
+                        if (!isCurrentCatalogBatch(batch)) return@collect
                         // Don't race the queue.
                         if (!isLoggedIn) return@collect
                         val queue = Collections.synchronizedList(mutableListOf<Int>())
 
-                        db.withTransaction {
+                        try {
+                            db.withTransaction {
+                            if (!isCurrentCatalogBatch(batch)) throw StaleCatalogBatchException()
                             // When the same app appears in multiple packages (e.g. user owns the game and
                             // also has a free-weekend / demo / family-shared sub for it), the previous
                             // implementation overwrote SteamApp.packageId with whichever pkg was iterated
@@ -4797,6 +4911,10 @@ class SteamService : Service(), IChallengeUrlChanged {
 
                                 queue.addAll(appIds)
                             }
+                            if (!isCurrentCatalogBatch(batch)) throw StaleCatalogBatchException()
+                            }
+                        } catch (_: StaleCatalogBatchException) {
+                            return@collect
                         }
 
                         try {
@@ -4816,11 +4934,26 @@ class SteamService : Service(), IChallengeUrlChanged {
                                 .chunked(MAX_PICS_BUFFER)
                                 .forEach { chunk ->
                                     Timber.d("bufferedPICSGetProductInfo: Queueing ${chunk.size} for PICS")
-                                    appPicsChannel.send(chunk)
+                                    if (isCurrentCatalogBatch(batch)) {
+                                        val generation = batch.catalogGeneration
+                                        if (generation == null) {
+                                            appPicsChannel.send(PicsBatch(chunk))
+                                        } else {
+                                            sendCatalogAppBatch(chunk, generation)
+                                        }
+                                    }
                                 }
                         } catch (e: AsyncJobFailedException) {
                             Timber.w("Could not get PICS product info $e")
+                            if (batch.catalogGeneration != null) throw e
                         }
+                    }
+                    } catch (error: Exception) {
+                        if (error is kotlinx.coroutines.CancellationException) throw error
+                        batch.catalogGeneration?.let { catalogGenerationTracker.fail(it, error) }
+                        Timber.e(error, "Package PICS consumer failed")
+                    } finally {
+                        completeCatalogBatch(batch)
                     }
                 }
         }

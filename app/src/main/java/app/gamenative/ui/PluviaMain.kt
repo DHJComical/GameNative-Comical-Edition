@@ -135,16 +135,47 @@ private const val PENDING_LAUNCH_TIMEOUT_MS = 10_000L
 /** Used to suspend preLaunchApp while the user decides on large workshop updates. */
 private var workshopUpdateDeferred: CompletableDeferred<Boolean>? = null
 
+internal enum class LoginNavigationAction {
+    IGNORE,
+    RETURN_TO_EXISTING_HOME,
+    NAVIGATE_TO_TARGET,
+}
+
+internal fun loginNavigationAction(
+    currentRoute: String?,
+    previousRoute: String?,
+    targetRoute: String,
+): LoginNavigationAction {
+    if (currentRoute != PluviaScreen.LoginUser.route) return LoginNavigationAction.IGNORE
+
+    val homeRoute = PluviaScreen.Home.route
+    val isHomeTarget = targetRoute == homeRoute || targetRoute.startsWith("$homeRoute?")
+    val isExistingHome = previousRoute == homeRoute || previousRoute?.startsWith("$homeRoute?") == true
+    return if (isHomeTarget && isExistingHome) {
+        LoginNavigationAction.RETURN_TO_EXISTING_HOME
+    } else {
+        LoginNavigationAction.NAVIGATE_TO_TARGET
+    }
+}
+
 private fun NavHostController.navigateFromLoginIfNeeded(
     targetRoute: String,
     logTag: String = "PluviaMain",
 ) {
     val currentRoute = currentDestination?.route
-    if (currentRoute == PluviaScreen.LoginUser.route) {
-        Timber.tag(logTag).i("Navigating from LoginUser to $targetRoute")
-        navigate(targetRoute) {
-            popUpTo(PluviaScreen.LoginUser.route) {
-                inclusive = true
+    val previousRoute = previousBackStackEntry?.destination?.route
+    when (loginNavigationAction(currentRoute, previousRoute, targetRoute)) {
+        LoginNavigationAction.IGNORE -> Unit
+        LoginNavigationAction.RETURN_TO_EXISTING_HOME -> {
+            Timber.tag(logTag).i("Returning from LoginUser to existing Home")
+            popBackStack()
+        }
+        LoginNavigationAction.NAVIGATE_TO_TARGET -> {
+            Timber.tag(logTag).i("Navigating from LoginUser to $targetRoute")
+            navigate(targetRoute) {
+                popUpTo(PluviaScreen.LoginUser.route) {
+                    inclusive = true
+                }
             }
         }
     }
@@ -683,21 +714,21 @@ fun PluviaMain(
             }
 
             // Start GOGService if user has GOG
-            if (app.gamenative.service.gog.GOGService.hasStoredCredentials(context) &&
-                !app.gamenative.service.gog.GOGService.isRunning
+            if (GOGService.hasStoredCredentials(context) &&
+                !GOGService.isRunning
             ) {
                 Timber.tag("GOG").d("[PluviaMain]: Starting GOGService for logged-in user")
-                app.gamenative.service.gog.GOGService.start(context)
+                GOGService.startForDownloadRecovery(context)
             } else {
-                Timber.tag("GOG").d("GOG SERVICE Not going to start: ${app.gamenative.service.gog.GOGService.isRunning}")
+                Timber.tag("GOG").d("GOG SERVICE Not going to start: ${GOGService.isRunning}")
             }
 
             // Start EpicService if user has Epic credentials
-            if (app.gamenative.service.epic.EpicService.hasStoredCredentials(context) &&
-                !app.gamenative.service.epic.EpicService.isRunning
+            if (EpicService.hasStoredCredentials(context) &&
+                !EpicService.isRunning
             ) {
                 Timber.d("[PluviaMain]: Starting EpicService for logged-in user")
-                app.gamenative.service.epic.EpicService.start(context)
+                EpicService.startForDownloadRecovery(context)
             }
 
             // Start AmazonService if user has Amazon credentials
@@ -705,7 +736,7 @@ fun PluviaMain(
                 !AmazonService.isRunning
             ) {
                 Timber.d("[PluviaMain]: Starting AmazonService for logged-in user")
-                AmazonService.start(context)
+                AmazonService.startForDownloadRecovery(context)
             }
 
             // Handle navigation when already logged in (e.g., app resumed with active session)

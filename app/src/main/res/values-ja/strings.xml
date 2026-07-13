@@ -1296,6 +1296,8 @@
     <string name="action_refresh">リフレッシュ</string>
     <string name="action_details">詳細</string>
     <string name="action_add_game">ゲームを追加</string>
+    <string name="add_game_local_folder">ローカルフォルダー</string>
+    <string name="add_game_catalog_load_error">ゲームライブラリを読み込めませんでした。</string>
     <string name="action_system">システム</string>
 
     <!-- Search -->

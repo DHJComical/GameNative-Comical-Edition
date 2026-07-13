@@ -46,6 +46,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import app.gamenative.ui.util.SnackbarManager
 import timber.log.Timber
@@ -88,6 +90,7 @@ class AmazonService : Service() {
     companion object {
         private const val ACTION_SYNC_LIBRARY = "app.gamenative.AMAZON_SYNC_LIBRARY"
         private const val ACTION_MANUAL_SYNC = "app.gamenative.AMAZON_MANUAL_SYNC"
+        private const val ACTION_DOWNLOAD_RECOVERY = "app.gamenative.AMAZON_DOWNLOAD_RECOVERY"
         private const val SYNC_THROTTLE_MILLIS = 15 * 60 * 1000L // 15 minutes
         private var instance: AmazonService? = null
 
@@ -96,6 +99,7 @@ class AmazonService : Service() {
         private var hasPerformedInitialSync: Boolean = false
         private var syncInProgress: Boolean = false
         private var backgroundSyncJob: Job? = null
+        private val catalogSyncMutex = Mutex()
 
         private fun setSyncInProgress(inProgress: Boolean) {
             syncInProgress = inProgress
@@ -139,6 +143,46 @@ class AmazonService : Service() {
                 Timber.i("[Amazon] Starting service without sync — throttled (${remainingMinutes}min remaining)")
             }
             context.startForegroundService(intent)
+        }
+
+        /** Starts persisted download recovery without refreshing the owned catalog. */
+        fun startForDownloadRecovery(context: Context) {
+            if (!isRunning) {
+                context.startForegroundService(Intent(context, AmazonService::class.java).apply {
+                    action = ACTION_DOWNLOAD_RECOVERY
+                })
+            }
+        }
+
+        /** Starts or refreshes Amazon's owned catalog on explicit user request. */
+        fun requestLibrarySync(context: Context) {
+            val intent = Intent(context, AmazonService::class.java).apply {
+                action = ACTION_SYNC_LIBRARY
+            }
+            context.startForegroundService(intent)
+        }
+
+        /** Performs an explicit catalog refresh and completes with its real result. */
+        suspend fun refreshLibrary(): Result<Unit> {
+            val service = instance ?: return Result.failure(IllegalStateException("Amazon service is not available"))
+            return catalogSyncMutex.withLock {
+            setSyncInProgress(true)
+            try {
+                service.amazonManager.refreshLibrary().getOrThrow()
+                service.importLegacyExternalLibraryIfNeeded()
+                service.reconcileRegisteredInstallations()
+                lastSyncTimestamp = System.currentTimeMillis()
+                hasPerformedInitialSync = true
+                Result.success(Unit)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Timber.e(error, "[Amazon] Explicit library sync failed")
+                Result.failure(error)
+            } finally {
+                setSyncInProgress(false)
+            }
+            }
         }
 
         fun stop() {
@@ -923,17 +967,8 @@ class AmazonService : Service() {
                 Timber.i("[Amazon] Automatic sync requested")
                 true
             }
-            null -> {
-                // Service restarted by Android (START_STICKY)
-                val timeSinceLastSync = System.currentTimeMillis() - lastSyncTimestamp
-                val shouldResync = !hasPerformedInitialSync || timeSinceLastSync >= SYNC_THROTTLE_MILLIS
-                if (shouldResync) {
-                    Timber.i("[Amazon] Service restarted by Android — performing sync (initial=$hasPerformedInitialSync, elapsed=${timeSinceLastSync}ms)")
-                } else {
-                    Timber.d("[Amazon] Service restarted by Android — skipping sync (throttled)")
-                }
-                shouldResync
-            }
+            ACTION_DOWNLOAD_RECOVERY -> false
+            null -> false
             else -> {
                 Timber.d("[Amazon] Service started without sync action")
                 false
@@ -1196,9 +1231,10 @@ class AmazonService : Service() {
     }
 
     private suspend fun syncLibrary() {
+        catalogSyncMutex.withLock {
         setSyncInProgress(true)
         try {
-            amazonManager.refreshLibrary()
+            amazonManager.refreshLibrary().getOrThrow()
             importLegacyExternalLibraryIfNeeded()
             reconcileRegisteredInstallations()
             lastSyncTimestamp = System.currentTimeMillis()
@@ -1208,6 +1244,7 @@ class AmazonService : Service() {
             Timber.e(e, "[Amazon] Library sync failed")
         } finally {
             setSyncInProgress(false)
+        }
         }
     }
 

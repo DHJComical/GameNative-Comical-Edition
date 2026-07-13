@@ -62,6 +62,7 @@ class GOGService : Service() {
     companion object {
         private const val ACTION_SYNC_LIBRARY = "app.gamenative.GOG_SYNC_LIBRARY"
         private const val ACTION_MANUAL_SYNC = "app.gamenative.GOG_MANUAL_SYNC"
+        private const val ACTION_DOWNLOAD_RECOVERY = "app.gamenative.GOG_DOWNLOAD_RECOVERY"
         private const val SYNC_THROTTLE_MILLIS = 15 * 60 * 1000L // 15 minutes
 
         private var instance: GOGService? = null
@@ -69,6 +70,7 @@ class GOGService : Service() {
         // Sync tracking variables
         private var syncInProgress: Boolean = false
         private var backgroundSyncJob: Job? = null
+        private val catalogSyncMutex = Mutex()
         private var lastSyncTimestamp: Long = 0L
         private var hasPerformedInitialSync: Boolean = false
 
@@ -105,6 +107,15 @@ class GOGService : Service() {
                 // Start service without sync action
             }
             context.startForegroundService(intent)
+        }
+
+        /** Starts persisted download recovery without refreshing the owned catalog. */
+        fun startForDownloadRecovery(context: Context) {
+            if (!isRunning) {
+                context.startForegroundService(Intent(context, GOGService::class.java).apply {
+                    action = ACTION_DOWNLOAD_RECOVERY
+                })
+            }
         }
 
         fun triggerLibrarySync(context: Context) {
@@ -363,8 +374,10 @@ class GOGService : Service() {
         }
 
         suspend fun refreshLibrary(context: Context): Result<Int> {
-            return getInstance()?.gogManager?.refreshLibrary(context)
-                ?: Result.failure(Exception("Service not available"))
+            return catalogSyncMutex.withLock {
+                getInstance()?.gogManager?.refreshLibrary(context)
+                    ?: Result.failure(Exception("Service not available"))
+            }
         }
 
         /** Starts or resumes a download in the selected registered GOG library. */
@@ -1024,20 +1037,9 @@ class GOGService : Service() {
                 true
             }
 
-            null -> {
-                // Service restarted by Android with null intent (START_STICKY behavior)
-                // Only sync if we haven't done initial sync yet, or if it's been a while
-                val timeSinceLastSync = System.currentTimeMillis() - lastSyncTimestamp
-                val shouldResync = !hasPerformedInitialSync || timeSinceLastSync >= SYNC_THROTTLE_MILLIS
+            ACTION_DOWNLOAD_RECOVERY -> false
 
-                if (shouldResync) {
-                    Timber.i("[GOGService] Service restarted by Android - performing sync (hasPerformedInitialSync=$hasPerformedInitialSync, timeSinceLastSync=${timeSinceLastSync}ms)")
-                    true
-                } else {
-                    Timber.d("[GOGService] Service restarted by Android - skipping sync (throttled)")
-                    false
-                }
-            }
+            null -> false
 
             else -> {
                 // Service started without sync action (e.g., just to keep it alive)
@@ -1055,7 +1057,9 @@ class GOGService : Service() {
                     setSyncInProgress(true)
                     Timber.d("[GOGService]: Starting background library sync")
 
-                    val syncResult = gogManager.startBackgroundSync(applicationContext)
+                    val syncResult = catalogSyncMutex.withLock {
+                        gogManager.startBackgroundSync(applicationContext)
+                    }
                     if (syncResult.isFailure) {
                         Timber.w("[GOGService]: Failed to start background sync: ${syncResult.exceptionOrNull()?.message}")
                     } else {

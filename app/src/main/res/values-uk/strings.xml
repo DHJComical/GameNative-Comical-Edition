@@ -1246,6 +1246,8 @@
     <string name="action_refresh">Оновити</string>
     <string name="action_details">Деталі</string>
     <string name="action_add_game">Додати гру</string>
+    <string name="add_game_local_folder">Локальна папка</string>
+    <string name="add_game_catalog_load_error">Не вдалося завантажити цю бібліотеку ігор.</string>
     <string name="action_system">Система</string>
 
     <!-- Search -->

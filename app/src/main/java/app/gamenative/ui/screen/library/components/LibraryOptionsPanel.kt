@@ -77,6 +77,15 @@ import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.adaptivePanelWidth
 import java.util.EnumSet
 
+internal val installedLibraryStatusFilters = listOf(
+    AppFilter.SHARED,
+    AppFilter.COMPATIBLE,
+    AppFilter.PLAYABLE,
+    AppFilter.FIVE_STAR,
+    AppFilter.FIVE_STAR_GPU,
+    AppFilter.PROVEN_GPU,
+)
+
 @Composable
 fun LibraryOptionsPanel(
     isOpen: Boolean,
@@ -242,17 +251,7 @@ fun LibraryOptionsPanel(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             AppFilter.entries.forEach { appFilter ->
-                                if (appFilter in listOf(
-                                        AppFilter.INSTALLED,
-                                        AppFilter.SHARED,
-                                        AppFilter.COMPATIBLE,
-                                        AppFilter.EXPIRED,
-                                        AppFilter.PLAYABLE,
-                                        AppFilter.FIVE_STAR,
-                                        AppFilter.FIVE_STAR_GPU,
-                                        AppFilter.PROVEN_GPU,
-                                    )
-                                ) {
+                                if (appFilter in installedLibraryStatusFilters) {
                                     OptionListItem(
                                         text = stringResource(appFilter.displayTextRes),
                                         selected = selectedFilters.contains(appFilter),
