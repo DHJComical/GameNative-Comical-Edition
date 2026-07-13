@@ -32,8 +32,13 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
 
+    - name: Validate signing secrets
+      if: env.HAS_SIGNING_SECRETS != 'true'
+      run: |
+        echo "All debug and production signing secrets are required." >&2
+        exit 1
+
     - name: Configure Keystore
-      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         KEYSTORE: ${{ secrets.KEYSTORE }}
         KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
@@ -48,7 +53,6 @@ jobs:
         echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
 
     - name: Configure Production Keystore
-      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         PROD_KEYSTORE: ${{ secrets.PROD_KEYSTORE }}
         PROD_KEYSTORE_KEY_ALIAS: ${{ secrets.PROD_KEYSTORE_KEY_ALIAS }}
@@ -99,13 +103,11 @@ jobs:
         unzip -p app-legacy-xr-release.apks universal.apk > universal-legacy-xr.apk
 
     - name: Copy lineage file
-      if: env.HAS_SIGNING_SECRETS == 'true'
       run: |
         mkdir -p app/keystores
         cp prod-debug.lineage app/keystores/prod-debug.lineage
 
     - name: Dual sign universal APKs
-      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         DEBUG_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
         DEBUG_KEY_PASS: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
@@ -123,15 +125,28 @@ jobs:
             --lineage app/keystores/prod-debug.lineage \
             --ks app/keystores/keystore \
             --ks-key-alias "$DEBUG_ALIAS" \
-            --ks-pass pass:$DEBUG_STORE_PASS \
-            --key-pass pass:$DEBUG_KEY_PASS \
+            --ks-pass env:DEBUG_STORE_PASS \
+            --key-pass env:DEBUG_KEY_PASS \
             --next-signer --ks app/keystores/prod.keystore \
             --ks-key-alias "$PROD_ALIAS" \
-            --ks-pass pass:$PROD_STORE_PASS \
-            --key-pass pass:$PROD_KEY_PASS \
+            --ks-pass env:PROD_STORE_PASS \
+            --key-pass env:PROD_KEY_PASS \
             --out "${apk%.apk}-signed.apk" \
             "$apk"
           mv "${apk%.apk}-signed.apk" "$apk"
+        done
+
+    - name: Verify signed APKs
+      run: |
+        BUILD_TOOLS_DIR="${ANDROID_HOME}/build-tools/34.0.0"
+        if [ ! -d "$BUILD_TOOLS_DIR" ]; then
+          BUILD_TOOLS_DIR="${ANDROID_SDK_ROOT}/build-tools/34.0.0"
+        fi
+        for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+          "${BUILD_TOOLS_DIR}/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$apk"
         done
 
     - name: Upload Legacy APK
