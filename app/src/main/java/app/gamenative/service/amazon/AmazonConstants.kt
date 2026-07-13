@@ -77,9 +77,24 @@ object AmazonConstants {
 
     /** Return the install directory for a specific Amazon game title. */
     fun getGameInstallPath(context: Context, gameTitle: String): String {
+        return getGameInstallPath(defaultAmazonGamesPath(context), gameTitle)
+    }
+
+    /** Resolves a title beneath an already validated Amazon library install root. */
+    fun getGameInstallPath(installRoot: String, gameTitle: String): String =
+        Paths.get(installRoot, gameDirectoryName(gameTitle)).normalize().toString()
+
+    /** Produces the stable on-disk directory name used for Amazon catalog titles. */
+    fun gameDirectoryName(gameTitle: String): String {
         val sanitized = gameTitle.replace(Regex("[^a-zA-Z0-9 \\-_]"), "").trim()
-        val dirName = sanitized.ifEmpty { "game_${gameTitle.hashCode().toUInt()}" }
-        return Paths.get(defaultAmazonGamesPath(context), dirName).toString()
+        return sanitized.ifEmpty { "game_${gameTitle.hashCode().toUInt()}" }
+    }
+
+    /** Returns true only for a game directory strictly beneath the canonical Amazon root. */
+    fun isGameInstallPath(installRoot: String, installPath: String): Boolean {
+        val root = File(installRoot).canonicalFile.toPath()
+        val path = File(installPath).canonicalFile.toPath()
+        return path != root && path.startsWith(root)
     }
 
     /** Build the Amazon OAuth login URL for a PKCE challenge and dynamic clientId. */

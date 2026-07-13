@@ -29,7 +29,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -48,21 +51,26 @@ import androidx.compose.ui.window.DialogProperties
 import app.gamenative.BuildConfig
 import app.gamenative.R
 import app.gamenative.data.DepotInfo
+import app.gamenative.data.GameSource
 import app.gamenative.service.SteamService
 import app.gamenative.service.SteamService.Companion.INVALID_APP_ID
+import app.gamenative.service.SteamInstallStatusSnapshot
 import app.gamenative.ui.component.LoadingScreen
 import app.gamenative.ui.component.topbar.BackButton
 import app.gamenative.ui.data.GameDisplayInfo
 import app.gamenative.ui.internal.fakeAppInfo
 import app.gamenative.ui.theme.PluviaTheme
+import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.utils.SteamUtils
 import app.gamenative.utils.StorageUtils
 import com.skydoves.landscapist.ImageOptions
 import com.skydoves.landscapist.coil.CoilImage
 import java.text.SimpleDateFormat
+import java.io.File
 import java.util.Date
 import java.util.Locale
 import kotlin.collections.orEmpty
+import timber.log.Timber
 
 data class InstallSizeInfo(
     val downloadSize: String,
@@ -72,13 +80,26 @@ data class InstallSizeInfo(
     val availableBytes: Long,
 )
 
+internal fun resolveSteamInstallTarget(
+    selectedLibrary: InstallLibraryOption?,
+    gameId: Int,
+): String? = selectedLibrary?.let { library ->
+    File(library.installRoot, gameId.toString()).path
+}
+
+internal fun canEnableSteamInstall(
+    installStatusLoaded: Boolean,
+    librarySelected: Boolean,
+    selectionConstraintsSatisfied: Boolean,
+): Boolean = installStatusLoaded && librarySelected && selectionConstraintsSatisfied
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameManagerDialog(
     visible: Boolean,
     onGetDisplayInfo: @Composable (Context) -> GameDisplayInfo,
     branch: String? = null,
-    onInstall: (List<Int>) -> Unit,
+    onInstall: (List<Int>, String) -> Unit,
     onDismissRequest: () -> Unit
 ) {
     val context = LocalContext.current
@@ -88,16 +109,16 @@ fun GameManagerDialog(
     val allDownloadableApps = remember { mutableStateListOf<Pair<Int, DepotInfo>>() }
     val selectedAppIds = remember { mutableStateMapOf<Int, Boolean>() }
     val enabledAppIds = remember { mutableStateMapOf<Int, Boolean>() }
+    var selectedLibrary by remember { mutableStateOf<InstallLibraryOption?>(null) }
 
     val displayInfo = onGetDisplayInfo(context)
     val gameId = displayInfo.gameId
-
-    val isBaseGameInstalled = remember(gameId) {
-        SteamService.isAppInstalled(gameId)
+    var selectedLibraryId by rememberSaveable(gameId) { mutableStateOf<String?>(null) }
+    var installStatus by remember(gameId) {
+        mutableStateOf<SteamInstallStatusSnapshot?>(null)
     }
-    val installedApp = remember(gameId, isBaseGameInstalled) {
-        if (isBaseGameInstalled) SteamService.getInstalledApp(gameId) else null
-    }
+    val isBaseGameInstalled = installStatus?.completedInstallPaths?.containsKey(gameId) == true
+    val installedApp = installStatus?.appInfoById?.get(gameId)
     val installedDlcIds = installedApp?.dlcDepots.orEmpty()
 
     val indirectDlcAppIds = remember(gameId) {
@@ -108,14 +129,30 @@ fun GameManagerDialog(
         SteamService.getMainAppDlcIdsWithoutProperDepotDlcIds(gameId).toList()
     }
 
-    LaunchedEffect(visible) {
+    LaunchedEffect(visible, gameId) {
         scrollState.animateScrollTo(0)
 
+        installStatus = null
         downloadableDepots.clear()
         allDownloadableApps.clear()
+        selectedAppIds.clear()
+        enabledAppIds.clear()
 
         // Get Downloadable Depots
         val allPossibleDownloadableDepots = SteamService.getDownloadableDepots(gameId)
+        val dlcDepots = allPossibleDownloadableDepots.values
+            .filter { it.dlcAppId != INVALID_APP_ID }
+            .groupBy { it.dlcAppId }
+            .mapValues { it.value.first() }
+        val status = runCatching {
+            SteamService.loadInstallStatus(listOf(gameId) + dlcDepots.keys)
+        }.getOrElse { error ->
+            Timber.e(error, "Failed to load Steam install status for app %d", gameId)
+            SnackbarManager.show(context.getString(R.string.game_libraries_update_failed))
+            return@LaunchedEffect
+        }
+        val loadedDlcIds = status.appInfoById[gameId]?.dlcDepots.orEmpty()
+        installStatus = status
         downloadableDepots.putAll(allPossibleDownloadableDepots)
 
         // Get Optional DLC IDs
@@ -124,23 +161,17 @@ fun GameManagerDialog(
             .map { it.value.dlcAppId }
 
         // Add DLCs
-        downloadableDepots
+        dlcDepots
             .toSortedMap()
-            .filter { (_, depot) ->
-                return@filter depot.dlcAppId != INVALID_APP_ID // Skip Main App
-            }.values
-                .groupBy { it.dlcAppId }
-                .mapValues { it.value.first() }
-                .toMap()
             .forEach { (_, depotInfo) ->
                 allDownloadableApps.add(Pair(depotInfo.dlcAppId, depotInfo))
-                val installed = SteamService.isAppInstalled(depotInfo.dlcAppId)
+                val installed = status.completedInstallPaths.containsKey(depotInfo.dlcAppId)
                 selectedAppIds[depotInfo.dlcAppId] =
                         installed || // For installed Base Game and Indirect DLC App
-                        installedDlcIds.contains(depotInfo.dlcAppId) || // For installed DLC from Main Depot
+                        loadedDlcIds.contains(depotInfo.dlcAppId) || // For installed DLC from Main Depot
                         ( !indirectDlcAppIds.contains(depotInfo.dlcAppId) && !optionalDlcIds.contains(depotInfo.dlcAppId) ) // Not in indirect DLC and not in optional DLC ids
 
-                enabledAppIds[depotInfo.dlcAppId] = !installedDlcIds.contains(depotInfo.dlcAppId) && !installed
+                enabledAppIds[depotInfo.dlcAppId] = !loadedDlcIds.contains(depotInfo.dlcAppId) && !installed
             }
 
         allDownloadableApps.sortBy { it.first }
@@ -201,8 +232,11 @@ fun GameManagerDialog(
         )
     }
 
-    fun getInstallSizeInfo(): InstallSizeInfo {
-        val availableBytes = StorageUtils.getAvailableSpaceForUncreatedPath(SteamService.getAppDirPath(gameId))
+    fun getInstallSizeInfo(library: InstallLibraryOption): InstallSizeInfo {
+        val installTarget = checkNotNull(resolveSteamInstallTarget(library, gameId))
+        val availableBytes = StorageUtils.getAvailableSpaceForUncreatedPath(
+            installTarget,
+        )
 
         val baseGameInstallBytes = if (!isBaseGameInstalled) {
             downloadableDepots
@@ -259,21 +293,30 @@ fun GameManagerDialog(
         }
     }
 
-    val installSizeInfo by remember(downloadableDepots.keys.toSet(), selectedAppIds.toMap(), enabledAppIds.toMap()) {
-        derivedStateOf { getInstallSizeInfo() }
+    val installSizeInfo: InstallSizeInfo? by remember(
+        downloadableDepots.keys.toSet(),
+        selectedAppIds.toMap(),
+        enabledAppIds.toMap(),
+        selectedLibrary,
+    ) {
+        derivedStateOf {
+            selectedLibrary?.let { library -> getInstallSizeInfo(library) }
+        }
     }
 
     fun installSizeDisplay() : String {
+        val info = installSizeInfo ?: return context.getString(R.string.game_libraries_loading)
         return context.getString(
             R.string.steam_install_space,
-            installSizeInfo.downloadSize,
-            installSizeInfo.installSize,
-            installSizeInfo.availableSpace
+            info.downloadSize,
+            info.installSize,
+            info.availableSpace
         )
     }
 
     fun installButtonEnabled() : Boolean {
-        if (installSizeInfo.availableBytes < installSizeInfo.installBytes) {
+        val info = installSizeInfo ?: return false
+        if (info.availableBytes < info.installBytes) {
             return false
         }
 
@@ -298,7 +341,7 @@ fun GameManagerDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black)
+                            .background(MaterialTheme.colorScheme.background)
                             .verticalScroll(scrollState),
                         horizontalAlignment = Alignment.Start,
                     ) {
@@ -479,6 +522,16 @@ fun GameManagerDialog(
                         Column(
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            InstallLibrarySelector(
+                                source = GameSource.STEAM,
+                                selectedLibraryId = selectedLibraryId,
+                                onSelectionChanged = {
+                                    selectedLibrary = it
+                                    selectedLibraryId = it?.library?.id
+                                },
+                                lockedInstallPath = installStatus?.completedInstallPaths?.get(gameId),
+                            )
+                            HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -491,13 +544,26 @@ fun GameManagerDialog(
                                     text = installSizeDisplay()
                                 )
 
+                                val installLibrary = selectedLibrary
+                                val installReady = installStatus != null && installLibrary != null
                                 Button(
-                                    enabled = installButtonEnabled(),
-                                    onClick = {
-                                        onInstall(selectedAppIds
-                                            .filter { selectedId -> selectedId.key in enabledAppIds.filter { enabledId -> enabledId.value } }
-                                            .filter { selectedId -> selectedId.value }.keys.toList())
-                                    }
+                                    enabled = canEnableSteamInstall(
+                                        installStatusLoaded = installStatus != null,
+                                        librarySelected = installLibrary != null,
+                                        selectionConstraintsSatisfied = installReady && installButtonEnabled(),
+                                    ),
+                                    onClick = installLibrary?.let { library ->
+                                        {
+                                            val selectedIds = selectedAppIds
+                                                .filter { selectedId ->
+                                                    selectedId.key in enabledAppIds.filter { enabledId -> enabledId.value }
+                                                }
+                                                .filter { selectedId -> selectedId.value }
+                                                .keys
+                                                .toList()
+                                            onInstall(selectedIds, library.library.id)
+                                        }
+                                    } ?: {},
                                 ) {
                                     Text(stringResource(R.string.install))
                                 }
@@ -535,7 +601,7 @@ fun Preview_GameManagerDialog() {
             onGetDisplayInfo = {
                 return@GameManagerDialog displayInfo
             },
-            onInstall = {},
+            onInstall = { _, _ -> },
             onDismissRequest = {}
         )
     }

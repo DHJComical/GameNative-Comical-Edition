@@ -2,7 +2,6 @@ package app.gamenative.ui.screen.library.components
 
 import android.graphics.drawable.ColorDrawable
 import android.view.KeyEvent
-import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import androidx.compose.animation.AnimatedVisibility
@@ -61,6 +60,20 @@ import app.gamenative.R
 import app.gamenative.ui.data.LibraryState
 import app.gamenative.ui.theme.PluviaTheme
 import kotlinx.coroutines.launch
+
+internal val LibrarySearchActionTouchTargetSize = 48.dp
+
+internal fun handleSearchInputKey(
+    action: Int,
+    keyCode: Int,
+    moveFocusDown: () -> Boolean,
+): Boolean {
+    if (action != KeyEvent.ACTION_DOWN || keyCode != KeyEvent.KEYCODE_DPAD_DOWN) {
+        return false
+    }
+
+    return moveFocusDown()
+}
 
 @Composable
 fun LibrarySearchBar(
@@ -191,18 +204,24 @@ private fun SearchBarInput(
         // Back/Close button
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .size(LibrarySearchActionTouchTargetSize)
                 .clickable { onDismiss() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = stringResource(R.string.library_search_close),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = stringResource(R.string.library_search_close),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
 
         // Search icon
@@ -254,17 +273,14 @@ private fun SearchBarInput(
                     }
 
                     // Handle D-pad navigation
-                    setOnKeyListener { v, keyCode, event ->
-                        if (event.action == KeyEvent.ACTION_DOWN &&
-                            keyCode == KeyEvent.KEYCODE_DPAD_DOWN
-                        ) {
-                            keyboardController?.hide()
-                            // Use native focus search to find next focusable view below
-                            val nextFocus = v.focusSearch(View.FOCUS_DOWN)
-                            nextFocus?.requestFocus()
-                            true
-                        } else {
-                            false
+                    setOnKeyListener { view, keyCode, event ->
+                        handleSearchInputKey(event.action, keyCode) {
+                            val focusMoved = focusManager.moveFocus(FocusDirection.Down)
+                            if (focusMoved) {
+                                keyboardController?.hide()
+                                view.clearFocus()
+                            }
+                            focusMoved
                         }
                     }
 
@@ -302,18 +318,24 @@ private fun SearchBarInput(
         if (searchQuery.isNotEmpty()) {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .size(LibrarySearchActionTouchTargetSize)
                     .clickable { onSearchText("") },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = Icons.Default.Clear,
-                    contentDescription = stringResource(R.string.library_search_clear),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
-                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Clear,
+                        contentDescription = stringResource(R.string.library_search_clear),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
             }
         }
     }

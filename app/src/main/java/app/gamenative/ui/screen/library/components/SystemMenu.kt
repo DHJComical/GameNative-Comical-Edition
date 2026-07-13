@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -48,6 +47,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,10 +71,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -82,6 +84,9 @@ import app.gamenative.R
 import app.gamenative.data.SteamFriend
 import app.gamenative.events.SteamEvent
 import app.gamenative.service.SteamService
+import app.gamenative.ui.component.AppMenuRow
+import app.gamenative.ui.component.AppMenuRowBehavior
+import app.gamenative.ui.component.AppMenuRowVariant
 import app.gamenative.ui.component.dialog.SupportersDialog
 import app.gamenative.ui.screen.PluviaScreen
 import app.gamenative.ui.theme.PluviaTheme
@@ -90,149 +95,94 @@ import app.gamenative.ui.util.adaptivePanelWidth
 import app.gamenative.ui.util.shouldShowGamepadUI
 import app.gamenative.utils.getAvatarURL
 import `in`.dragonbra.javasteam.enums.EPersonaState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-/**
- * A single menu item in the System Menu
- */
-@Composable
-private fun SystemMenuItem(
-    text: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    focusRequester: FocusRequester = remember { FocusRequester() },
-    isDestructive: Boolean = false,
+internal const val MENU_EXIT_DURATION_MS = 180
+
+internal class SystemMenuNavigationTransition(
+    private val exitDurationMs: Long = MENU_EXIT_DURATION_MS.toLong(),
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
+    var inProgress by mutableStateOf(false)
+        private set
 
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.02f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "menuItemScale",
-    )
+    fun start(
+        scope: CoroutineScope,
+        onDismiss: () -> Unit,
+        onTransitionChanged: (Boolean) -> Unit,
+        action: () -> Unit,
+    ): Boolean {
+        if (inProgress) return false
 
-    val backgroundColor = when {
-        isFocused -> MaterialTheme.colorScheme.primaryContainer
-        else -> Color.Transparent
-    }
-
-    val contentColor = when {
-        isDestructive && isFocused -> MaterialTheme.colorScheme.error
-        isDestructive -> MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
-        isFocused -> MaterialTheme.colorScheme.onPrimaryContainer
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    Box(
-        modifier = modifier
-            .scale(scale)
-            .clip(RoundedCornerShape(16.dp))
-            .background(backgroundColor)
-            .focusRequester(focusRequester)
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(28.dp),
-            )
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleMedium,
-                color = contentColor,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Normal,
-            )
+        inProgress = true
+        try {
+            onTransitionChanged(true)
+            onDismiss()
+        } catch (error: Throwable) {
+            Timber.e(error, "Failed to begin System Menu navigation transition")
+            inProgress = false
+            onTransitionChanged(false)
+            throw error
         }
+
+        scope.launch {
+            try {
+                delay(exitDurationMs)
+                action()
+            } catch (error: Throwable) {
+                Timber.e(error, "Failed to complete System Menu navigation transition")
+                throw error
+            } finally {
+                inProgress = false
+                onTransitionChanged(false)
+            }
+        }
+        return true
     }
 }
+
+internal fun systemMenuTransitionConsumesBack(
+    isActive: Boolean,
+    navigationTransitionInProgress: Boolean,
+): Boolean = isActive && navigationTransitionInProgress
 
 /**
  * Status option item for the dropdown
  */
 @Composable
-private fun StatusOption(
+internal fun SystemMenuStatusOption(
     text: String,
     statusColor: Color,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    val scale by animateFloatAsState(
-        targetValue = if (isFocused) 1.02f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
+    AppMenuRow(
+        headline = text,
+        behavior = AppMenuRowBehavior.Radio(
+            selected = isSelected,
+            onClick = onClick,
         ),
-        label = "statusOptionScale",
+        modifier = modifier,
+        leading = {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(statusColor, CircleShape),
+            )
+        },
+        trailing = {
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        },
     )
-
-    val backgroundColor = when {
-        isFocused -> MaterialTheme.colorScheme.primaryContainer
-        isSelected -> MaterialTheme.colorScheme.surfaceContainerHighest
-        else -> Color.Transparent
-    }
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .scale(scale)
-            .clip(RoundedCornerShape(12.dp))
-            .background(backgroundColor)
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .background(statusColor, CircleShape),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (isFocused) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-            modifier = Modifier.weight(1f),
-        )
-        if (isSelected) {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
 }
 
 /**
@@ -241,10 +191,13 @@ private fun StatusOption(
  */
 @Composable
 fun SystemMenu(
+    isActive: Boolean,
     isOpen: Boolean,
     onDismiss: () -> Unit,
+    onNavigationTransitionChanged: (Boolean) -> Unit,
     onNavigateRoute: (String) -> Unit,
     onDownloadsClick: () -> Unit = {},
+    onStorageClick: () -> Unit = {},
     onLogout: () -> Unit,
     onGoOnline: () -> Unit,
     isOffline: Boolean = false,
@@ -268,6 +221,22 @@ fun SystemMenu(
     var selectedStatus by remember(persona) { mutableStateOf(persona?.state ?: EPersonaState.Online) }
     var showSupporters by remember { mutableStateOf(false) }
     var showStatusPicker by remember { mutableStateOf(false) }
+    val navigationTransition = remember { SystemMenuNavigationTransition() }
+    val navigationTransitionInProgress = navigationTransition.inProgress
+    val latestNavigationTransitionChanged by rememberUpdatedState(onNavigationTransitionChanged)
+
+    LaunchedEffect(Unit) {
+        latestNavigationTransitionChanged(false)
+    }
+
+    val dismissThen: (() -> Unit) -> Unit = { action ->
+        navigationTransition.start(
+            scope = scope,
+            onDismiss = onDismiss,
+            onTransitionChanged = { latestNavigationTransitionChanged(it) },
+            action = action,
+        )
+    }
 
     LaunchedEffect(Unit) {
         persona = SteamService.instance?.localPersona?.value
@@ -297,12 +266,15 @@ fun SystemMenu(
         }
     }
 
-    BackHandler(enabled = isOpen && showStatusPicker) {
+    BackHandler(enabled = isActive && isOpen && showStatusPicker && !navigationTransitionInProgress) {
         showStatusPicker = false
     }
-    BackHandler(enabled = isOpen && !showStatusPicker) {
+    BackHandler(enabled = isActive && isOpen && !showStatusPicker && !navigationTransitionInProgress) {
         onDismiss()
     }
+    BackHandler(
+        enabled = systemMenuTransitionConsumesBack(isActive, navigationTransitionInProgress),
+    ) {}
 
     SupportersDialog(visible = showSupporters, onDismiss = { showSupporters = false })
 
@@ -350,10 +322,7 @@ fun SystemMenu(
             ),
             exit = slideOutHorizontally(
                 targetOffsetX = { fullWidth -> fullWidth },
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
-                ),
+                animationSpec = tween(MENU_EXIT_DURATION_MS),
             ),
             modifier = Modifier.align(Alignment.CenterEnd),
         ) {
@@ -433,11 +402,12 @@ fun SystemMenu(
                                     },
                                 )
                                 .focusRequester(profileFocusRequester)
-                                .selectable(
-                                    selected = isProfileFocused,
+                                .clickable(
+                                    enabled = !isOffline && SteamService.isLoggedIn,
+                                    role = Role.Button,
                                     interactionSource = profileInteractionSource,
                                     indication = null,
-                                    onClick = { if (!isOffline && SteamService.isLoggedIn) showStatusPicker = !showStatusPicker },
+                                    onClick = { showStatusPicker = !showStatusPicker },
                                 )
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -513,7 +483,7 @@ fun SystemMenu(
                         }
 
                         // Status picker dropdown
-                        androidx.compose.material3.DropdownMenu(
+                        DropdownMenu(
                             expanded = showStatusPicker,
                             onDismissRequest = { showStatusPicker = false },
                             modifier = Modifier
@@ -536,7 +506,7 @@ fun SystemMenu(
                                     Triple(EPersonaState.Away, stringResource(R.string.status_away), PluviaTheme.colors.statusAway),
                                     Triple(EPersonaState.Invisible, stringResource(R.string.status_invisible), PluviaTheme.colors.statusOffline),
                                 ).forEach { (state, label, color) ->
-                                    StatusOption(
+                                    SystemMenuStatusOption(
                                         text = label,
                                         statusColor = color,
                                         isSelected = selectedStatus == state,
@@ -553,13 +523,13 @@ fun SystemMenu(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Menu items
                     Column(
@@ -569,47 +539,54 @@ fun SystemMenu(
                             .focusGroup(),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        SystemMenuItem(
-                            text = stringResource(R.string.settings_text),
+                        AppMenuRow(
+                            headline = stringResource(R.string.settings_text),
                             icon = Icons.Default.Settings,
-                            onClick = {
-                                onNavigateRoute(PluviaScreen.Settings.route)
-                                onDismiss()
+                            behavior = AppMenuRowBehavior.Command {
+                                dismissThen { onNavigateRoute(PluviaScreen.Settings.route) }
                             },
                             focusRequester = firstItemFocusRequester,
                         )
 
-                        SystemMenuItem(
-                            text = stringResource(R.string.app_downloads),
+                        AppMenuRow(
+                            headline = stringResource(R.string.downloads_section_title),
                             icon = Icons.Default.Download,
-                            onClick = {
-                                onDownloadsClick()
-                                onDismiss()
+                            behavior = AppMenuRowBehavior.Command {
+                                dismissThen(onDownloadsClick)
                             },
-                            focusRequester = firstItemFocusRequester,
                         )
 
-                        SystemMenuItem(
-                            text = stringResource(R.string.help_and_support),
+                        AppMenuRow(
+                            headline = stringResource(R.string.settings_storage_manage_title),
+                            icon = Icons.Default.Storage,
+                            behavior = AppMenuRowBehavior.Command {
+                                dismissThen(onStorageClick)
+                            },
+                        )
+
+                        AppMenuRow(
+                            headline = stringResource(R.string.help_and_support),
                             icon = Icons.AutoMirrored.Filled.Help,
-                            onClick = {
+                            behavior = AppMenuRowBehavior.Command {
                                 uriHandler.openUri("https://discord.gg/2hKv4VfZfE")
                             },
                         )
 
-                        SystemMenuItem(
-                            text = stringResource(R.string.hall_of_fame),
+                        AppMenuRow(
+                            headline = stringResource(R.string.hall_of_fame),
                             icon = Icons.AutoMirrored.Filled.StarHalf,
-                            onClick = { showSupporters = true },
+                            behavior = AppMenuRowBehavior.Command {
+                                showSupporters = true
+                            },
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         if (isOffline || !SteamService.isLoggedIn) {
                             val goOnlineLabelRes = if (!SteamService.isLoggedIn) {
@@ -617,46 +594,40 @@ fun SystemMenu(
                             } else {
                                 R.string.steam_go_online
                             }
-                            SystemMenuItem(
-                                text = stringResource(goOnlineLabelRes),
+                            AppMenuRow(
+                                headline = stringResource(goOnlineLabelRes),
                                 icon = Icons.AutoMirrored.Filled.Login,
-                                onClick = {
+                                behavior = AppMenuRowBehavior.Command {
                                     onGoOnline()
                                     onDismiss()
                                 },
+                                variant = AppMenuRowVariant.Accent,
                             )
                         } else {
-                            SystemMenuItem(
-                                text = stringResource(R.string.steam_go_offline),
+                            AppMenuRow(
+                                headline = stringResource(R.string.steam_go_offline),
                                 icon = Icons.AutoMirrored.Filled.AirplaneTicket,
-                                onClick = {
-                                    onNavigateRoute(PluviaScreen.Home.route + "?offline=true") // TODO: test this
-                                    onDismiss()
+                                behavior = AppMenuRowBehavior.Command {
+                                    dismissThen {
+                                        onNavigateRoute(PluviaScreen.Home.route + "?offline=true") // TODO: test this
+                                    }
                                 },
                             )
 
-                            SystemMenuItem(
-                                text = stringResource(R.string.steam_sign_out),
+                            AppMenuRow(
+                                headline = stringResource(R.string.steam_sign_out),
                                 icon = Icons.AutoMirrored.Filled.Logout,
-                                onClick = {
+                                behavior = AppMenuRowBehavior.Command {
                                     onLogout()
                                     onDismiss()
                                 },
-                                isDestructive = true,
+                                variant = AppMenuRowVariant.Destructive,
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
                         // GOG
-                        SystemMenuItem(
-                            text = stringResource(
+                        AppMenuRow(
+                            headline = stringResource(
                                 if (gogLoggedIn) R.string.gog_settings_logout_title
                                 else R.string.gog_settings_login_title,
                             ),
@@ -665,16 +636,20 @@ fun SystemMenu(
                             } else {
                                 Icons.AutoMirrored.Filled.Login
                             },
-                            onClick = {
+                            behavior = AppMenuRowBehavior.Command {
                                 if (gogLoggedIn) onGogLogoutClick() else onGogLoginClick()
                                 onDismiss()
                             },
-                            isDestructive = gogLoggedIn,
+                            variant = if (gogLoggedIn) {
+                                AppMenuRowVariant.Destructive
+                            } else {
+                                AppMenuRowVariant.Default
+                            },
                         )
 
                         // Epic
-                        SystemMenuItem(
-                            text = stringResource(
+                        AppMenuRow(
+                            headline = stringResource(
                                 if (epicLoggedIn) R.string.epic_settings_logout_title
                                 else R.string.epic_settings_login_title,
                             ),
@@ -683,16 +658,20 @@ fun SystemMenu(
                             } else {
                                 Icons.AutoMirrored.Filled.Login
                             },
-                            onClick = {
+                            behavior = AppMenuRowBehavior.Command {
                                 if (epicLoggedIn) onEpicLogoutClick() else onEpicLoginClick()
                                 onDismiss()
                             },
-                            isDestructive = epicLoggedIn,
+                            variant = if (epicLoggedIn) {
+                                AppMenuRowVariant.Destructive
+                            } else {
+                                AppMenuRowVariant.Default
+                            },
                         )
 
                         // Amazon
-                        SystemMenuItem(
-                            text = stringResource(
+                        AppMenuRow(
+                            headline = stringResource(
                                 if (amazonLoggedIn) R.string.amazon_settings_logout_title
                                 else R.string.amazon_settings_login_title,
                             ),
@@ -701,11 +680,15 @@ fun SystemMenu(
                             } else {
                                 Icons.AutoMirrored.Filled.Login
                             },
-                            onClick = {
+                            behavior = AppMenuRowBehavior.Command {
                                 if (amazonLoggedIn) onAmazonLogoutClick() else onAmazonLoginClick()
                                 onDismiss()
                             },
-                            isDestructive = amazonLoggedIn,
+                            variant = if (amazonLoggedIn) {
+                                AppMenuRowVariant.Destructive
+                            } else {
+                                AppMenuRowVariant.Default
+                            },
                         )
                     }
 
@@ -734,8 +717,8 @@ fun SystemMenu(
         if (isOpen) {
             try {
                 firstItemFocusRequester.requestFocus()
-            } catch (_: Exception) {
-                // TODO: Focus request may fail if composition is not ready
+            } catch (error: IllegalStateException) {
+                Timber.w(error, "System Menu initial focus target is not ready")
             }
         }
     }
@@ -769,8 +752,10 @@ private fun Preview_SystemMenu() {
                 }
 
                 SystemMenu(
+                    isActive = true,
                     isOpen = true,
                     onDismiss = { },
+                    onNavigationTransitionChanged = { },
                     onNavigateRoute = { },
                     onLogout = { },
                     onGoOnline = { },

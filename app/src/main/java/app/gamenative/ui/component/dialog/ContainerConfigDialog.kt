@@ -45,8 +45,6 @@ import app.gamenative.ui.component.NoExtractOutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -62,7 +60,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -83,6 +80,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.tooling.preview.Preview
 import app.gamenative.BuildConfig
 import app.gamenative.R
+import app.gamenative.ui.component.AppTabDensity
+import app.gamenative.ui.component.AppTabItem
+import app.gamenative.ui.component.AppTabLayout
+import app.gamenative.ui.component.AppTabRow
 import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.ui.component.dialog.state.MessageDialogState
 import app.gamenative.ui.component.settings.SettingsCPUList
@@ -1270,11 +1271,11 @@ fun ContainerConfigDialog(
                                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                                 when (event.key) {
                                     Key.ButtonR1, Key.ButtonR2 -> {
-                                        selectedTab = (selectedTab + 1) % tabs.size
+                                        selectedTab = cycleContainerConfigTab(selectedTab, tabs.size, 1)
                                         true
                                     }
                                     Key.ButtonL1, Key.ButtonL2 -> {
-                                        selectedTab = (selectedTab - 1 + tabs.size) % tabs.size
+                                        selectedTab = cycleContainerConfigTab(selectedTab, tabs.size, -1)
                                         true
                                     }
                                     else -> false
@@ -1288,20 +1289,17 @@ fun ContainerConfigDialog(
                             )
                             .fillMaxSize(),
                     ) {
-                        ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 0.dp) {
-                            tabs.forEachIndexed { index, label ->
-                                Tab(
-                                    selected = selectedTab == index,
-                                    onClick = { selectedTab = index },
-                                    text = { Text(text = label) },
-                                    modifier = if (index == 0) {
-                                        Modifier.focusRequester(firstTabFocusRequester)
-                                    } else {
-                                        Modifier
-                                    },
-                                )
-                            }
-                        }
+                        AppTabRow(
+                            items = tabs.mapIndexed { index, label ->
+                                AppTabItem(key = index, label = label)
+                            },
+                            selectedKey = selectedTab,
+                            onTabSelected = { selectedTab = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            density = AppTabDensity.Compact,
+                            layout = AppTabLayout.Scrollable,
+                            focusRequesters = mapOf(0 to firstTabFocusRequester),
+                        )
                         Column(
                             modifier = Modifier
                                 .verticalScroll(scrollState)
@@ -1322,6 +1320,11 @@ fun ContainerConfigDialog(
             }
         )
     }
+}
+
+internal fun cycleContainerConfigTab(currentIndex: Int, tabCount: Int, offset: Int): Int {
+    require(tabCount > 0) { "tabCount must be positive" }
+    return (currentIndex + offset).mod(tabCount)
 }
 
 @Preview(uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)

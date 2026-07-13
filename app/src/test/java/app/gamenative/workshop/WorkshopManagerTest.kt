@@ -352,6 +352,7 @@ class WorkshopManagerTest {
             gameRootDir = gameRootDir,
             workshopContentDir = workshopContentDir,
             items = items,
+            bionicSteam = false,
         )
 
         assertTrue(File(workshopContentDir, "111").exists())
@@ -369,6 +370,7 @@ class WorkshopManagerTest {
             gameRootDir = gameRootDir,
             workshopContentDir = workshopContentDir,
             items = listOf(makeItem(222)),
+            bionicSteam = false,
         )
 
         assertFalse(File(workshopContentDir, "111").exists())
@@ -384,6 +386,7 @@ class WorkshopManagerTest {
             gameRootDir = gameRootDir,
             workshopContentDir = workshopContentDir,
             items = emptyList(),
+            bionicSteam = false,
         )
 
         // Empty items list → enabledIdSet is null → no deletion
@@ -399,6 +402,7 @@ class WorkshopManagerTest {
             gameRootDir = gameRootDir,
             workshopContentDir = missingDir,
             items = listOf(makeItem(111)),
+            bionicSteam = false,
         )
     }
 
@@ -429,6 +433,7 @@ class WorkshopManagerTest {
             winePrefix = winePrefix,
             gameName = "RenPy Game",
             compatibilityOverride = metadataOnlyWorkshopOverride(),
+            bionicSteam = false,
         )
 
         val settingsDir = File(gameRootDir, "steam_settings")
@@ -455,6 +460,7 @@ class WorkshopManagerTest {
             gameName = "RenPy Game",
             workshopModPath = manualModsDir.absolutePath,
             compatibilityOverride = metadataOnlyWorkshopOverride(),
+            bionicSteam = false,
         )
 
         val modsJson = File(gameRootDir, "steam_settings/mods.json")
@@ -475,6 +481,7 @@ class WorkshopManagerTest {
             workshopContentDir = workshopContentDir,
             items = listOf(makeItem(111)),
             gameName = "RenPy Game",
+            bionicSteam = false,
         )
 
         assertTrue(File(gameRootDir, "steam_settings/mods").isDirectory)

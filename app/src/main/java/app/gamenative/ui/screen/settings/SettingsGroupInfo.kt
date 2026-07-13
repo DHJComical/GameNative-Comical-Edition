@@ -25,7 +25,7 @@ import com.alorma.compose.settings.ui.SettingsSwitch
 fun SettingsGroupInfo() {
     SettingsGroup() {
         val uriHandler = LocalUriHandler.current
-        var askForTip by rememberSaveable { mutableStateOf(!PrefManager.tipped) }
+        var showThankYouDialog by rememberSaveable { mutableStateOf(PrefManager.showThankYouDialog) }
         var showLibrariesDialog by rememberSaveable { mutableStateOf(false) }
 
         LibrariesDialog(
@@ -40,19 +40,17 @@ fun SettingsGroupInfo() {
             icon = { Icon(imageVector = Icons.Filled.MonetizationOn, contentDescription = "Tip") },
             onClick = {
                 uriHandler.openUri(Constants.Misc.KO_FI_LINK)
-                askForTip = false
-                PrefManager.tipped = !askForTip
             },
         )
 
         SettingsSwitch(
             colors = settingsTileColorsAlt(),
-            state = askForTip,
-            title = { Text(stringResource(R.string.settings_info_ask_tip_title)) },
-            subtitle = { Text(text = stringResource(R.string.settings_info_ask_tip_subtitle)) },
+            state = showThankYouDialog,
+            title = { Text(stringResource(R.string.settings_info_show_thank_you_dialog_title)) },
+            subtitle = { Text(text = stringResource(R.string.settings_info_show_thank_you_dialog_subtitle)) },
             onCheckedChange = {
-                askForTip = it
-                PrefManager.tipped = !askForTip
+                showThankYouDialog = it
+                PrefManager.showThankYouDialog = it
             },
         )
 

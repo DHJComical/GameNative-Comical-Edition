@@ -2,7 +2,9 @@ package app.gamenative.service.epic
 
 import android.net.Uri
 import app.gamenative.PrefManager
+import app.gamenative.data.library.GameLibraryInstallation
 import java.io.File
+import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.SecureRandom
 import timber.log.Timber
@@ -147,9 +149,31 @@ object EpicConstants {
      * Sanitizes the game title to be filesystem-safe
      */
     fun getGameInstallPath(context: android.content.Context, gameTitle: String): String {
-        // Sanitize game title for filesystem
-        val sanitizedTitle = gameTitle.replace(Regex("[^a-zA-Z0-9 \\-_]"), "").trim()
-        return Paths.get(defaultEpicGamesPath(context), sanitizedTitle).toString()
+        return getGameInstallPath(defaultEpicGamesPath(context), gameTitle)
+    }
+
+    /** Resolves one Epic app name beneath a previously validated managed-library install root. */
+    fun getGameInstallPath(installation: GameLibraryInstallation, appName: String): String =
+        getGameInstallPath(installation.installRoot, appName)
+
+    /** Resolves one Epic app name beneath an explicit install root without filesystem side effects. */
+    fun getGameInstallPath(installRoot: String, appName: String): String {
+        val directoryName = sanitizeGameDirectoryName(appName)
+        return Path.of(installRoot).resolve(directoryName).normalize().toString()
+    }
+
+    /** Converts Epic's app name to a non-empty, filesystem-safe directory name. */
+    fun sanitizeGameDirectoryName(appName: String): String {
+        val sanitized = appName.replace(Regex("[^a-zA-Z0-9 \\-_]"), "").trim()
+        require(sanitized.isNotEmpty()) { "Epic app name has no filesystem-safe characters" }
+        return sanitized
+    }
+
+    /** True only when [gamePath] is an immediate child of a registered Epic install root. */
+    fun isDirectGamePath(installRoot: String, gamePath: String): Boolean {
+        val canonicalRoot = File(installRoot).canonicalFile.toPath()
+        val canonicalGame = File(gamePath).canonicalFile.toPath()
+        return canonicalGame.parent == canonicalRoot
     }
 
     /**

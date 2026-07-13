@@ -6,6 +6,8 @@ import app.gamenative.data.EpicGame
 import app.gamenative.data.LaunchInfo
 import app.gamenative.data.LibraryItem
 import app.gamenative.db.dao.EpicGameDao
+import app.gamenative.service.epic.manifest.EpicManifest
+import app.gamenative.service.epic.manifest.ManifestUtils
 import app.gamenative.utils.Net
 import app.gamenative.utils.sanitizeForFilename
 import java.io.File
@@ -738,6 +740,11 @@ class EpicManager @Inject constructor(
         }
     }
 
+    /** Returns all persisted Epic catalog entries for registered-library reconciliation. */
+    suspend fun getAllGames(): List<EpicGame> = withContext(Dispatchers.IO) {
+        epicGameDao.getAllAsList()
+    }
+
     /**
      * Start background sync (called after login)
      */
@@ -1110,10 +1117,10 @@ class EpicManager @Inject constructor(
             val manifestData = manifestResult.getOrNull()!!
 
             // Parse with Kotlin parser
-            val manifest = app.gamenative.service.epic.manifest.EpicManifest.readAll(manifestData.manifestBytes)
+            val manifest = EpicManifest.readAll(manifestData.manifestBytes)
 
             // Required-only sizes for detail page display (download uses container language via getSizesForSelectedInstallTags elsewhere).
-            val (downloadSize, installSize) = app.gamenative.service.epic.manifest.ManifestUtils.getSizesForSelectedInstallTags(manifest, emptyList())
+            val (downloadSize, installSize) = ManifestUtils.getSizesForSelectedInstallTags(manifest, emptyList())
             Timber.tag("Epic").d(
                 "Manifest stats for $appName: version=${manifest.version}, featureLevel=${manifest.meta?.featureLevel}, " +
                     "buildVersion=${manifest.meta?.buildVersion}, buildId=${manifest.meta?.buildId}",

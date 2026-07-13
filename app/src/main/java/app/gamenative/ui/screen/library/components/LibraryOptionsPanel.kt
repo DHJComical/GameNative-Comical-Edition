@@ -77,6 +77,15 @@ import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.adaptivePanelWidth
 import java.util.EnumSet
 
+internal val installedLibraryStatusFilters = listOf(
+    AppFilter.SHARED,
+    AppFilter.COMPATIBLE,
+    AppFilter.PLAYABLE,
+    AppFilter.FIVE_STAR,
+    AppFilter.FIVE_STAR_GPU,
+    AppFilter.PROVEN_GPU,
+)
+
 @Composable
 fun LibraryOptionsPanel(
     isOpen: Boolean,
@@ -176,11 +185,11 @@ fun LibraryOptionsPanel(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(vertical = 12.dp)
+                            .padding(vertical = 8.dp)
                     ) {
                         GameStatsKey(modifier = Modifier.padding(horizontal = 8.dp))
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.options_sort_by))
                         Column(
@@ -202,7 +211,7 @@ fun LibraryOptionsPanel(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.library_app_type))
                         Column(
@@ -231,7 +240,7 @@ fun LibraryOptionsPanel(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.library_app_status))
                         Column(
@@ -242,17 +251,7 @@ fun LibraryOptionsPanel(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             AppFilter.entries.forEach { appFilter ->
-                                if (appFilter in listOf(
-                                        AppFilter.INSTALLED,
-                                        AppFilter.SHARED,
-                                        AppFilter.COMPATIBLE,
-                                        AppFilter.EXPIRED,
-                                        AppFilter.PLAYABLE,
-                                        AppFilter.FIVE_STAR,
-                                        AppFilter.FIVE_STAR_GPU,
-                                        AppFilter.PROVEN_GPU,
-                                    )
-                                ) {
+                                if (appFilter in installedLibraryStatusFilters) {
                                     OptionListItem(
                                         text = stringResource(appFilter.displayTextRes),
                                         selected = selectedFilters.contains(appFilter),
@@ -264,7 +263,7 @@ fun LibraryOptionsPanel(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         OptionSectionHeader(text = stringResource(R.string.library_layout_title))
                         Column(
@@ -304,7 +303,7 @@ fun LibraryOptionsPanel(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
             }

@@ -1,11 +1,13 @@
 package app.gamenative.db.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import app.gamenative.data.ConfigInfo
 import app.gamenative.data.SteamApp
 import app.gamenative.service.SteamService.Companion.INVALID_PKG_ID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -48,6 +50,24 @@ private const val OWNED_APPS_WHERE =
     ") "
 
 private const val PAGE_SIZE = 50
+
+/**
+ * Steam catalog fields that can identify a GameNative marker installation on disk.
+ *
+ * Keeping this projection separate from [SteamApp] prevents unrelated catalog metadata from being
+ * loaded by the installed-library rescan observer.
+ *
+ * @property appId Steam application identifier associated with each candidate directory name.
+ * @property name Last-resort historical directory identity used by marker discovery.
+ * @property installDir Top-level Steam install-directory identity.
+ * @property config Config identity whose install directory has precedence during discovery.
+ */
+data class SteamCatalogInstallIdentity(
+    @ColumnInfo(name = "id") val appId: Int,
+    val name: String,
+    @ColumnInfo(name = "install_dir") val installDir: String,
+    val config: ConfigInfo,
+)
 
 @Dao
 interface SteamAppDao {
@@ -149,9 +169,25 @@ interface SteamAppDao {
     @Query("SELECT * FROM steam_app ORDER BY name ASC")
     suspend fun getAllAsList(): List<SteamApp>
 
+    /** Observes only catalog fields whose changes can reveal a marker-backed installation. */
+    @Query("SELECT id, name, install_dir, config FROM steam_app ORDER BY id ASC")
+    fun observeCatalogInstallIdentities(): Flow<List<SteamCatalogInstallIdentity>>
+
     /** Returns installed Steam apps (joined against app_info) sorted by name. */
-    @Query("SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id WHERE app_info.is_downloaded = 1 ORDER BY steam_app.name ASC")
+    @Query(
+        "SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id " +
+            "WHERE app_info.is_downloaded = 1 AND steam_app.id != 480 " +
+            "ORDER BY LOWER(steam_app.name), steam_app.id",
+    )
     suspend fun getInstalledGames(): List<SteamApp>
+
+    /** Observes installed Steam apps for installed-only library surfaces. */
+    @Query(
+        "SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id " +
+            "WHERE app_info.is_downloaded = 1 AND steam_app.id != 480 " +
+            "ORDER BY LOWER(steam_app.name), steam_app.id",
+    )
+    fun observeInstalledGames(): Flow<List<SteamApp>>
 
     @Query("SELECT * FROM steam_app AS app WHERE dlc_for_app_id = :appId AND depots <> '{}' AND " +
             " EXISTS (" +

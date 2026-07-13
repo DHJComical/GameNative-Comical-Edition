@@ -21,7 +21,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -36,9 +40,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.gamenative.R
+import app.gamenative.data.GameSource
 import app.gamenative.ui.component.LoadingScreen
 import app.gamenative.ui.component.topbar.BackButton
 import app.gamenative.ui.data.GameDisplayInfo
+import app.gamenative.utils.StorageUtils
 import com.skydoves.landscapist.ImageOptions
 import com.skydoves.landscapist.coil.CoilImage
 import java.text.SimpleDateFormat
@@ -57,18 +63,22 @@ fun AmazonInstallDialog(
     displayInfo: GameDisplayInfo,
     downloadSize: String,
     installSize: String,
-    availableSpace: String,
-    installEnabled: Boolean,
-    onInstall: () -> Unit,
+    installBytes: Long,
+    onInstall: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     if (!visible) return
 
+    var selectedLibrary by remember { mutableStateOf<InstallLibraryOption?>(null) }
+    var selectedLibraryId by rememberSaveable(displayInfo.gameId) { mutableStateOf<String?>(null) }
+    val availableBytes = selectedLibrary?.let {
+        StorageUtils.getAvailableSpaceForUncreatedPath(it.installRoot)
+    } ?: 0L
     val sizeDisplay = stringResource(
         R.string.steam_install_space,
         downloadSize,
         installSize,
-        availableSpace,
+        StorageUtils.formatBinarySize(availableBytes),
     )
 
     Dialog(
@@ -81,7 +91,7 @@ fun AmazonInstallDialog(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(MaterialTheme.colorScheme.background)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.Start,
         ) {
@@ -196,6 +206,15 @@ fun AmazonInstallDialog(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
             )
 
+            InstallLibrarySelector(
+                source = GameSource.AMAZON,
+                selectedLibraryId = selectedLibraryId,
+                onSelectionChanged = {
+                    selectedLibrary = it
+                    selectedLibraryId = it?.library?.id
+                },
+            )
+
             // ── Bottom: size summary + action buttons ─────────────────────
             Row(
                 modifier = Modifier
@@ -213,8 +232,8 @@ fun AmazonInstallDialog(
                         Text(stringResource(R.string.cancel))
                     }
                     Button(
-                        enabled = installEnabled,
-                        onClick = onInstall,
+                        enabled = selectedLibrary != null && (installBytes <= 0L || availableBytes >= installBytes),
+                        onClick = { onInstall(selectedLibrary!!.library.id) },
                     ) {
                         Text(stringResource(R.string.install))
                     }

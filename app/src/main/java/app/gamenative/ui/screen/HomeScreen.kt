@@ -2,19 +2,50 @@ package app.gamenative.ui.screen
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.gamenative.ui.enums.HomeDestination
+import app.gamenative.enums.AppTheme
 import app.gamenative.ui.model.HomeViewModel
 import app.gamenative.ui.screen.downloads.HomeDownloadsScreen
+import app.gamenative.ui.screen.downloads.DownloadsSection
 import app.gamenative.ui.screen.library.HomeLibraryScreen
+import app.gamenative.ui.screen.settings.SettingsScreen
+import app.gamenative.ui.screen.settings.GameLibrariesScreen
 import app.gamenative.ui.theme.PluviaTheme
+import com.materialkolor.PaletteStyle
+
+private const val HOME_PAGE_TRANSITION_DURATION_MS = 360
+
+internal enum class HomeBackAction {
+    NOT_HANDLED,
+    CONSUME,
+    NAVIGATE_LIBRARY,
+    NAVIGATE_STORAGE,
+}
+
+internal fun homeBackAction(
+    destination: HomeDestination,
+    gameLibraryOperationActive: Boolean,
+): HomeBackAction = when {
+    destination == HomeDestination.Library -> HomeBackAction.NOT_HANDLED
+    destination == HomeDestination.GameLibraries && gameLibraryOperationActive -> HomeBackAction.CONSUME
+    destination == HomeDestination.GameLibraries -> HomeBackAction.NAVIGATE_STORAGE
+    else -> HomeBackAction.NAVIGATE_LIBRARY
+}
 
 @Composable
 fun HomeScreen(
@@ -27,37 +58,108 @@ fun HomeScreen(
     onLogout: () -> Unit,
     onNavigateRoute: (String) -> Unit,
     onGoOnline: () -> Unit,
-    isOffline: Boolean = false
+    appTheme: AppTheme,
+    paletteStyle: PaletteStyle,
+    onAppTheme: (AppTheme) -> Unit,
+    onPaletteStyle: (PaletteStyle) -> Unit,
+    isOffline: Boolean = false,
 ) {
     val homeState by viewModel.homeState.collectAsStateWithLifecycle()
+    var gameLibraryOperationActive by remember { mutableStateOf(false) }
 
-    // Pressing back while logged in, confirm we want to close the app.
-    BackHandler {
-        if (homeState.currentDestination != HomeDestination.Library) {
-            viewModel.onDestination(HomeDestination.Library)
-        } else {
-            onClickExit()
+    val backAction = homeBackAction(homeState.currentDestination, gameLibraryOperationActive)
+    // Register the destination fallback before child pages so their nested BackHandlers take priority.
+    BackHandler(enabled = backAction != HomeBackAction.NOT_HANDLED) {
+        when (backAction) {
+            HomeBackAction.NOT_HANDLED,
+            HomeBackAction.CONSUME,
+            -> Unit
+            HomeBackAction.NAVIGATE_LIBRARY -> viewModel.onDestination(HomeDestination.Library)
+            HomeBackAction.NAVIGATE_STORAGE -> viewModel.onDestination(HomeDestination.Storage)
         }
     }
 
-    when (homeState.currentDestination) {
-        HomeDestination.Library -> HomeLibraryScreen(
+    Box(modifier = Modifier.fillMaxSize()) {
+        HomeLibraryScreen(
+            isActive = homeState.currentDestination == HomeDestination.Library,
+            onExit = onClickExit,
             onClickPlay = onClickPlay,
             onTestGraphics = onTestGraphics,
             onPlayWithDiagnostics = onPlayWithDiagnostics,
-            onNavigateRoute = onNavigateRoute,
+            onNavigateRoute = { route ->
+                if (route == PluviaScreen.Settings.route) {
+                    viewModel.onDestination(HomeDestination.Settings)
+                } else {
+                    onNavigateRoute(route)
+                }
+            },
             onLogout = onLogout,
             onGoOnline = onGoOnline,
             onDownloadsClick = { viewModel.onDestination(HomeDestination.Downloads) },
+            onStorageClick = { viewModel.onDestination(HomeDestination.Storage) },
             isOffline = isOffline,
         )
-        HomeDestination.Downloads -> HomeDownloadsScreen(
-            onBack = { viewModel.onDestination(HomeDestination.Library) },
-            onClickPlay = onClickPlay,
-            onTestGraphics = onTestGraphics,
-            onPlayWithDiagnostics = onPlayWithDiagnostics,
-        )
+
+        AnimatedVisibility(
+            visible = homeState.currentDestination == HomeDestination.Downloads,
+            enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            HomeDownloadsScreen(
+                section = DownloadsSection.Downloads,
+                onBack = { viewModel.onDestination(HomeDestination.Library) },
+                onClickPlay = onClickPlay,
+                onTestGraphics = onTestGraphics,
+                onPlayWithDiagnostics = onPlayWithDiagnostics,
+            )
+        }
+
+        AnimatedVisibility(
+            visible = homeState.currentDestination == HomeDestination.Storage ||
+                homeState.currentDestination == HomeDestination.GameLibraries,
+            enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            HomeDownloadsScreen(
+                section = DownloadsSection.Storage,
+                onBack = { viewModel.onDestination(HomeDestination.Library) },
+                onClickPlay = onClickPlay,
+                onTestGraphics = onTestGraphics,
+                onPlayWithDiagnostics = onPlayWithDiagnostics,
+                onGameLibrariesClick = { viewModel.onDestination(HomeDestination.GameLibraries) },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = homeState.currentDestination == HomeDestination.GameLibraries,
+            enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            GameLibrariesScreen(
+                onBack = { viewModel.onDestination(HomeDestination.Storage) },
+                onOperationActiveChanged = { gameLibraryOperationActive = it },
+            )
+        }
+
+        AnimatedVisibility(
+            visible = homeState.currentDestination == HomeDestination.Settings,
+            enter = slideInHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            exit = slideOutHorizontally(tween(HOME_PAGE_TRANSITION_DURATION_MS)) { it },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            SettingsScreen(
+                appTheme = appTheme,
+                paletteStyle = paletteStyle,
+                onAppTheme = onAppTheme,
+                onPaletteStyle = onPaletteStyle,
+                onBack = { viewModel.onDestination(HomeDestination.Library) },
+            )
+        }
     }
+
 }
 
 @Preview(uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)
@@ -80,6 +182,10 @@ private fun Preview_HomeScreenContent() {
             onNavigateRoute = {},
             onClickExit = {},
             onGoOnline = {},
+            appTheme = AppTheme.AUTO,
+            paletteStyle = PaletteStyle.TonalSpot,
+            onAppTheme = {},
+            onPaletteStyle = {},
         )
     }
 }

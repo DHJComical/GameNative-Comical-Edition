@@ -104,7 +104,7 @@
     <string name="downloads_status_complete">Completato</string>
     <string name="downloads_status_failed">Fallito</string>
     <string name="downloads_status_paused">In pausa</string>
-    <string name="downloads_summary">Gestisci download attivi e archiviazione in un unico posto</string>
+    <string name="downloads_summary">%1$d attivi • %2$d ripristinabili • %3$d completati</string>
     <string name="storage_internal">Interno</string>
     <string name="storage_external">Esterno</string>
     <string name="storage_free_of_total">%1$s: %2$s liberi su %3$s</string>
@@ -128,7 +128,7 @@
     <string name="container_storage_move_to_internal_button">Sposta su interna</string>
     <string name="container_storage_move_external_disabled">Imposta un percorso di archiviazione esterna nelle Impostazioni prima di spostare i giochi.</string>
     <string name="container_storage_move_success">Spostato %1$s in %2$s</string>
-    <string name="container_storage_move_failed">Impossibile spostare il gioco: %1$s</string>
+    <string name="container_storage_move_failed">Impossibile spostare %1$s: %2$s</string>
     <string name="container_storage_remove_button">Rimuovi container</string>
     <string name="container_storage_remove_title">Rimuovi container</string>
     <string name="container_storage_remove_message">Rimuovere il container per %1$s? I file di gioco rimarranno sul disco.</string>
@@ -740,14 +740,12 @@
     <string name="directinput_mapper_type">Tipo Mapper DirectInput</string>
     <string name="disable_mouse_input">Disabilita Input Mouse</string>
     <string name="touchscreen_mode">Modalità Touchscreen</string>
-    <string name="touchscreen_mode_description">Per visual novel e giochi RTS</string>
     <string name="shooter_mode_toggle">Modalità sparatutto</string>
     <string name="shooter_mode_toggle_description">Sostituisci gli stick con joystick dinamici</string>
     <string name="shooter_mode_on">Attiva mouse</string>
     <string name="shooter_mode_off">Attiva stick</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Impostazioni gesti</string>
     <string name="gesture_settings_title">Impostazioni gesti touch</string>
     <string name="gesture_tap">Tocco</string>
     <string name="gesture_tap_subtitle">Clic sinistro</string>
@@ -959,8 +957,8 @@
     <string name="settings_info_title">Info</string>
     <string name="settings_info_send_tip_title">Invia mancia</string>
     <string name="settings_info_send_tip_subtitle">Contribuisci allo sviluppo in corso</string>
-    <string name="settings_info_ask_tip_title">Chiedi mancia all\'avvio</string>
-    <string name="settings_info_ask_tip_subtitle">Impedisce la comparsa del messaggio mancia</string>
+    <string name="settings_info_show_thank_you_dialog_title">Mostra la finestra "Grazie per aver usato GameNative"</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Mostra un messaggio di supporto all\'avvio di GameNative</string>
     <string name="settings_info_source_title">Codice sorgente</string>
     <string name="settings_info_source_subtitle">Visualizza il codice sorgente di questo progetto</string>
     <string name="settings_info_libraries_title">Librerie Usate</string>
@@ -1245,6 +1243,8 @@
     <string name="action_refresh">Aggiorna</string>
     <string name="action_details">Dettagli</string>
     <string name="action_add_game">Aggiungi gioco</string>
+    <string name="add_game_local_folder">Cartella locale</string>
+    <string name="add_game_catalog_load_error">Impossibile caricare questa raccolta di giochi.</string>
     <string name="action_system">Sistema</string>
 
     <!-- Search -->
@@ -1667,6 +1667,53 @@
     <string name="option_share_diagnostics">Condividi diagnostica</string>
     <string name="diagnostics_share_title">Condividi il log di diagnostica</string>
     <string name="diagnostics_share_none">Nessun log di diagnostica. Usa prima \"Esecuzione diagnostica\".</string>
+    <string name="external_display_input">Input schermo esterno</string>
+    <string name="external_display_input_subtitle">Scegli come deve comportarsi uno schermo di presentazione collegato</string>
+    <string name="external_display_mode_hybrid">Ibrido (touchpad + pulsante tastiera)</string>
+    <string name="external_display_mode_keyboard">Usa come tastiera completa</string>
+    <string name="external_display_mode_off">Non usare lo schermo esterno</string>
+    <string name="external_display_mode_touchpad">Usa come superficie touchpad</string>
+    <string name="external_display_swap">Mostra il gioco sullo schermo esterno</string>
+    <string name="external_display_swap_subtitle">Scambia gli schermi in modo che il gioco venga visualizzato sullo schermo esterno e questo dispositivo diventi la superficie di controllo</string>
+    <string name="steam_install_library_label">Percorso di installazione</string>
+    <string name="steam_library_built_in">Libreria integrata</string>
+    <string name="steam_library_custom">Libreria Steam</string>
+    <string name="install_library_title">Percorso di installazione</string>
+    <string name="install_library_built_in">Raccolta integrata</string>
+    <string name="install_library_custom">Raccolta personalizzata</string>
+    <string name="install_library_space_summary">Necessario: %1$s\nDisponibile: %2$s</string>
+    <string name="game_libraries_title">Gestione delle raccolte di giochi</string>
+    <string name="game_libraries_summary">Configura le raccolte di installazione per ogni negozio</string>
+    <string name="game_libraries_open">Apri la gestione delle raccolte di giochi</string>
+    <string name="game_libraries_add">Aggiungi raccolta</string>
+    <string name="game_libraries_built_in">Raccolta integrata</string>
+    <string name="game_libraries_custom">Raccolta personalizzata</string>
+    <string name="game_libraries_default">Predefinita</string>
+    <string name="game_libraries_set_default">Imposta come predefinita</string>
+    <string name="game_libraries_conflict">Conflitto con un percorso precedente: questa raccolta è disponibile solo per il rilevamento. Migra i giochi prima di rimuoverla.</string>
+    <string name="game_libraries_invalid_path">Impossibile usare la cartella selezionata</string>
+    <string name="game_libraries_permission_denied">L’accesso a tutti i file è necessario per aggiungere raccolte esterne allo spazio di archiviazione dell’app</string>
+    <string name="game_libraries_update_failed">Aggiornamento della raccolta di giochi non riuscito</string>
+    <string name="game_libraries_toggle_games">Mostra o nascondi i giochi</string>
+    <string name="game_libraries_no_games">Nessun gioco installato o download parziale in questa raccolta</string>
+    <string name="game_libraries_game_details">%1$s\n%2$s</string>
+    <string name="game_libraries_migrate">Migra gioco</string>
+    <string name="game_libraries_migrate_title">Sposta %1$s in</string>
+    <string name="game_libraries_no_migration_target">Aggiungi un’altra raccolta senza conflitti per questo negozio prima della migrazione.</string>
+    <string name="game_libraries_remove_title">Rimuovi raccolta</string>
+    <string name="game_libraries_remove_confirm">Elimina giochi e rimuovi raccolta</string>
+    <string name="game_libraries_remove_warning">Questa operazione elimina definitivamente %1$d giochi installati e %2$d download parziali (circa %3$s), i relativi container e tutti i salvataggi locali archiviati al loro interno. La registrazione della raccolta verrà rimossa solo dopo che tutte le eliminazioni saranno riuscite.</string>
+    <string name="game_libraries_remove_partial_failure">Impossibile eliminare alcuni giochi. La raccolta rimane registrata.</string>
+    <string name="game_libraries_failed_removals">Rimozione non riuscita per: %1$s. La raccolta rimane registrata; riprova dopo aver risolto il problema.</string>
+    <string name="game_libraries_pending_cleanup">%1$d transazione/i della raccolta interrotta/e richiede/richiedono ancora la pulizia. I dati di origine sono stati conservati. ID transazione: %2$s</string>
+    <string name="install_library_permission_denied">L’accesso a tutti i file non è stato concesso. Seleziona una raccolta accessibile per continuare.</string>
+    <string name="install_library_permission_revoked">L’accesso alla raccolta selezionata è stato revocato. Seleziona una raccolta accessibile per continuare.</string>
+    <string name="game_libraries_operation_failed">Impossibile aggiornare le raccolte di giochi: %1$s</string>
+    <string name="game_libraries_loading">Caricamento delle raccolte di giochi…</string>
+    <string name="store_steam">Steam</string>
+    <string name="store_gog">GOG</string>
+    <string name="store_epic_games">Epic Games</string>
+    <string name="store_amazon_games">Amazon Games</string>
 
     <string name="nexus_tab_import">Importa</string>
     <string name="nexus_tab_mods">Mod</string>

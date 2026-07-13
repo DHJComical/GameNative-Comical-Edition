@@ -38,7 +38,8 @@ import androidx.compose.ui.unit.dp
  * gradient is painted through, clipped to [shape] so the outer edge stays flush with the element.
  *
  * Pass the element's clickable [interactionSource] so focus is tracked, and apply this after the
- * clip/background so the border draws on top. [durationMillis] is one full rotation.
+ * clip/background so the border draws on top. [durationMillis] is one full rotation. Supplying
+ * [color] draws a static solid ring and does not start the rotation animation.
  */
 @Composable
 fun Modifier.focusRing(
@@ -46,6 +47,7 @@ fun Modifier.focusRing(
     shape: Shape,
     width: Dp = 4.dp,
     durationMillis: Int = 5000,
+    color: Color? = null,
 ): Modifier {
     val focused by interactionSource.collectIsFocusedAsState()
 
@@ -55,8 +57,8 @@ fun Modifier.focusRing(
     // while focused; losing focus cancels the effect and snaps back to 0, so an unfocused ring
     // schedules no animation frames (an always-on InfiniteTransition would keep ticking per frame).
     val angle = remember { Animatable(0f) }
-    LaunchedEffect(focused) {
-        if (focused) {
+    LaunchedEffect(focused, color) {
+        if (shouldAnimateFocusRing(focused = focused, hasSolidColor = color != null)) {
             angle.animateTo(
                 targetValue = 360f,
                 animationSpec = infiniteRepeatable(
@@ -73,11 +75,15 @@ fun Modifier.focusRing(
 
     // First == last so the sweep loops seamlessly. Only blue (tertiary) and purple (primary);
     // secondary is a near-black gray and would show as a dark band in the ring.
-    val colors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.tertiary,
-        MaterialTheme.colorScheme.primary,
-    )
+    val gradientColors = if (color == null) {
+        listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.tertiary,
+            MaterialTheme.colorScheme.primary,
+        )
+    } else {
+        null
+    }
     val strokePx = with(LocalDensity.current) { width.toPx() }
 
     return drawWithCache {
@@ -85,9 +91,9 @@ fun Modifier.focusRing(
         val outline = shape.createOutline(size, layoutDirection, this)
         val bounds = Rect(Offset.Zero, size)
         val center = bounds.center
-        val sweep = Brush.sweepGradient(colors, center)
-        // Allocate the layer Paint once per cache build (size change), not once per frame.
-        val layerPaint = Paint()
+        val sweep = gradientColors?.let { Brush.sweepGradient(it, center) }
+        // Gradient rings allocate their layer Paint once per cache build, not once per frame.
+        val layerPaint = if (sweep != null) Paint() else null
         val clipPath = Path().apply {
             when (val o = outline) {
                 is Outline.Rectangle -> addRect(o.rect)
@@ -98,9 +104,22 @@ fun Modifier.focusRing(
 
         onDrawWithContent {
             drawContent()
+
+            if (color != null) {
+                drawContext.canvas.save()
+                drawContext.canvas.clipPath(clipPath)
+                drawOutline(
+                    outline = outline,
+                    color = color,
+                    style = Stroke(strokePx * 2f),
+                )
+                drawContext.canvas.restore()
+                return@onDrawWithContent
+            }
+
             // Reading angle here keeps the animation in the draw phase, off recomposition.
             val canvas = drawContext.canvas
-            canvas.saveLayer(bounds, layerPaint)
+            canvas.saveLayer(bounds, checkNotNull(layerPaint))
 
             // Keep the ring's outer edge flush with the element.
             canvas.clipPath(clipPath)
@@ -111,7 +130,7 @@ fun Modifier.focusRing(
             // Paint the gradient only over the stroke. Oversized circle covers any rotation.
             rotate(angle.value, pivot = center) {
                 drawCircle(
-                    brush = sweep,
+                    brush = checkNotNull(sweep),
                     radius = size.maxDimension,
                     blendMode = BlendMode.SrcIn,
                 )
@@ -121,3 +140,8 @@ fun Modifier.focusRing(
         }
     }
 }
+
+internal fun shouldAnimateFocusRing(
+    focused: Boolean,
+    hasSolidColor: Boolean,
+): Boolean = focused && !hasSolidColor

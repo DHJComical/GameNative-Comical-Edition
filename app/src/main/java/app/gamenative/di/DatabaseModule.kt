@@ -12,8 +12,13 @@ import app.gamenative.db.dao.EncryptedAppTicketDao
 import app.gamenative.db.dao.LibraryPlayHistoryDao
 import app.gamenative.db.dao.ModDao
 import app.gamenative.db.dao.SteamUnlockedBranchDao
-import app.gamenative.db.migration.ROOM_MIGRATION_V23_to_V24
+import app.gamenative.db.dao.StoreDownloadTaskDao
+import app.gamenative.db.dao.LibraryFileTransactionDao
+import app.gamenative.db.dao.LibraryDeletionTransactionDao
 import app.gamenative.db.migration.ROOM_MIGRATION_V7_to_V8
+import app.gamenative.db.migration.ROOM_MIGRATION_V23_to_V24
+import app.gamenative.db.migration.ROOM_MIGRATION_V24_to_V25
+import app.gamenative.db.migration.ROOM_MIGRATION_V25_to_V26
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -34,6 +39,8 @@ class DatabaseModule {
             .addMigrations(
                 ROOM_MIGRATION_V7_to_V8,
                 ROOM_MIGRATION_V23_to_V24,
+                ROOM_MIGRATION_V24_to_V25,
+                ROOM_MIGRATION_V25_to_V26,
             )
             .fallbackToDestructiveMigration(true)
             .build()
@@ -90,6 +97,20 @@ class DatabaseModule {
     @Provides
     @Singleton
     fun provideDownloadingAppInfoDao(db: PluviaDatabase): DownloadingAppInfoDao = db.downloadingAppInfoDao()
+
+    @Provides
+    @Singleton
+    fun provideStoreDownloadTaskDao(db: PluviaDatabase): StoreDownloadTaskDao = db.storeDownloadTaskDao()
+
+    @Provides
+    @Singleton
+    fun provideLibraryFileTransactionDao(db: PluviaDatabase): LibraryFileTransactionDao =
+        db.libraryFileTransactionDao()
+
+    @Provides
+    @Singleton
+    fun provideLibraryDeletionTransactionDao(db: PluviaDatabase): LibraryDeletionTransactionDao =
+        db.libraryDeletionTransactionDao()
 
     @Provides
     @Singleton

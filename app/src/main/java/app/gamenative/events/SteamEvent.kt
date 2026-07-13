@@ -5,8 +5,18 @@ import app.gamenative.enums.LoginResult
 import `in`.dragonbra.javasteam.steam.handlers.steamfriends.callback.ProfileInfoCallback
 
 sealed interface SteamEvent<T> : Event<T> {
+    enum class LogoutReason(val requiresReauthentication: Boolean) {
+        USER_REQUEST(true),
+        CREDENTIALS_REJECTED(true),
+        CONNECTION_LOST(false),
+        SERVICE_STOPPED(false),
+    }
+
     data class Connected(val isAutoLoggingIn: Boolean) : SteamEvent<Unit>
-    data class LoggedOut(val username: String?) : SteamEvent<Unit>
+    data class LoggedOut(
+        val username: String?,
+        val reason: LogoutReason,
+    ) : SteamEvent<Unit>
     data class LogonEnded(val username: String?, val loginResult: LoginResult, val message: String? = null) :
         SteamEvent<Unit>
     data class LogonStarted(val username: String?) : SteamEvent<Unit>

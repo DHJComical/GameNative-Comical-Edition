@@ -4,16 +4,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import app.gamenative.PrefManager
 import app.gamenative.data.GameSource
 import app.gamenative.data.LibraryItem
-import app.gamenative.data.RecommendationRepository
 import app.gamenative.data.RecommendedGame
 import app.gamenative.ui.data.LibraryState
 import app.gamenative.ui.enums.AppFilter
@@ -22,6 +18,12 @@ import app.gamenative.ui.screen.library.RecommendedGameScreen
 import app.gamenative.ui.theme.PluviaTheme
 import com.posthog.PostHog
 import java.util.EnumSet
+import timber.log.Timber
+
+internal fun recommendationSnapshotFor(libraryItem: LibraryItem): RecommendedGame? =
+    libraryItem.recommendedGame?.takeIf {
+        libraryItem.isRecommended && it.id == libraryItem.recommendedGameId
+    }
 
 @Composable
 internal fun LibraryDetailPane(
@@ -50,25 +52,28 @@ internal fun LibraryDetailPane(
                 onRefresh = {},
             )
         } else if (libraryItem.isRecommended) {
-            val context = LocalContext.current
-            var game by remember(libraryItem.recommendedGameId) {
-                mutableStateOf<RecommendedGame?>(null)
-            }
-            LaunchedEffect(libraryItem.recommendedGameId) {
-                game = RecommendationRepository.getCurrentRecommendation(context)
-                if (game != null && PrefManager.usageAnalyticsEnabled) {
+            val game = recommendationSnapshotFor(libraryItem)
+            if (game == null) {
+                LaunchedEffect(libraryItem.appId) {
+                    Timber.tag("LibraryDetailPane").e(
+                        "Recommendation item %s has no matching session snapshot",
+                        libraryItem.appId,
+                    )
+                    onBack()
+                }
+            } else {
+                LaunchedEffect(game.id) {
+                    if (!PrefManager.usageAnalyticsEnabled) return@LaunchedEffect
                     PostHog.capture(
                         event = "recommendation_opened",
                         properties = mapOf(
-                            "game_name" to (game?.name ?: ""),
-                            "game_id" to (game?.id ?: ""),
+                            "game_name" to game.name,
+                            "game_id" to game.id,
                         ),
                     )
                 }
-            }
-            game?.let { rec ->
                 RecommendedGameScreen(
-                    game = rec,
+                    game = game,
                     onBack = onBack,
                 )
             }

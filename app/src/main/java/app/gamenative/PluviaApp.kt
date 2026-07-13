@@ -7,8 +7,13 @@ import androidx.compose.runtime.setValue
 import androidx.navigation.NavController
 import app.gamenative.db.dao.AmazonGameDao
 import app.gamenative.db.dao.GOGGameDao
+import app.gamenative.data.library.GameLibraryOperations
+import app.gamenative.data.library.InstalledCatalogIdentitySource
+import app.gamenative.data.library.InstalledCatalogIdentitySignature
+import app.gamenative.data.library.InstalledLibrarySynchronizer
 import app.gamenative.events.EventDispatcher
 import app.gamenative.service.ActiveGameRegistry
+import app.gamenative.service.GameRuntimeLifecycleRegistryImpl
 import app.gamenative.service.DownloadService
 import app.gamenative.service.SteamService
 import app.gamenative.sync.FrontendSyncManager
@@ -35,9 +40,19 @@ import timber.log.Timber
 import dagger.hilt.android.HiltAndroidApp
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 typealias NavChangedListener = NavController.OnDestinationChangedListener
 
@@ -46,6 +61,9 @@ class PluviaApp : SplitCompatApplication() {
 
     @Inject lateinit var gogGameDao: GOGGameDao
     @Inject lateinit var amazonGameDao: AmazonGameDao
+    @Inject lateinit var gameLibraryOperations: GameLibraryOperations
+    @Inject lateinit var installedCatalogIdentitySource: InstalledCatalogIdentitySource
+    @Inject lateinit var installedLibrarySynchronizer: InstalledLibrarySynchronizer
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -83,6 +101,15 @@ class PluviaApp : SplitCompatApplication() {
         DownloadService.populateDownloadService(this)
 
         migrateGogAmazonPaths()
+
+        appScope.launch {
+            recoverAndStartInstalledLibrarySynchronization(
+                gameLibraryOperations,
+                installedLibrarySynchronizer,
+                installedCatalogIdentitySource,
+                appScope,
+            )
+        }
 
         appScope.launch {
             ContainerMigrator.migrateLegacyContainersIfNeeded(
@@ -225,7 +252,32 @@ class PluviaApp : SplitCompatApplication() {
          * full environment teardown — shared by XServerScreen.exit() and
          * MainActivity.onDestroy fallback so both paths clean up identically
          */
+        private val runtimeTeardownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val runtimeTeardownMutex = Mutex()
+        private const val SETUP_TEARDOWN_TIMEOUT_MILLIS = 5_000L
+
+        /** Requests teardown and returns immediately without blocking the caller thread. */
         fun shutdownEnvironment() {
+            GameRuntimeLifecycleRegistryImpl.requestStop()
+            runtimeTeardownScope.launch { shutdownEnvironmentAndAwait() }
+        }
+
+        /** Completes runtime teardown without ever waiting on the caller thread. */
+        suspend fun shutdownEnvironmentAndAwait() = runtimeTeardownMutex.withLock {
+            val runtimeToken = GameRuntimeLifecycleRegistryImpl.requestStop()
+            if (runtimeToken != null) {
+                val finishedInTime = GameRuntimeLifecycleRegistryImpl.awaitSetupFinished(
+                    runtimeToken,
+                    SETUP_TEARDOWN_TIMEOUT_MILLIS,
+                )
+                if (!finishedInTime) {
+                    Timber.e("Runtime setup teardown timed out; remaining STOPPING until setup exits")
+                    GameRuntimeLifecycleRegistryImpl.awaitSetupFinished(
+                        runtimeToken,
+                        GameRuntimeLifecycleRegistryImpl.WAIT_FOREVER,
+                    )
+                }
+            }
             val env = xEnvironment
             Timber.i("shutdownEnvironment: env=%s", env != null)
 
@@ -234,20 +286,23 @@ class PluviaApp : SplitCompatApplication() {
                 .onFailure { Timber.e(it, "shutdownEnvironment: achievementWatcher.stop") }
             runCatching { SteamService.clearCachedAchievements() }
                 .onFailure { Timber.e(it, "shutdownEnvironment: clearCachedAchievements") }
-            runCatching { touchpadView?.releasePointerCapture() }
-                .onFailure { Timber.e(it, "shutdownEnvironment: releasePointerCapture") }
             runCatching { env?.stopEnvironmentComponents() }
                 .onFailure { Timber.e(it, "shutdownEnvironment: stopEnvironmentComponents") }
 
-            xEnvironment = null
-            inputControlsView = null
-            inputControlsManager = null
-            touchpadView = null
-            achievementWatcher = null
+            withContext(Dispatchers.Main.immediate) {
+                runCatching { touchpadView?.releasePointerCapture() }
+                    .onFailure { Timber.e(it, "shutdownEnvironment: releasePointerCapture") }
+                xEnvironment = null
+                inputControlsView = null
+                inputControlsManager = null
+                touchpadView = null
+                achievementWatcher = null
+                clearActiveSuspendState()
+            }
             ActiveGameRegistry.clear()
+            GameRuntimeLifecycleRegistryImpl.markStopped(runtimeToken)
             SteamService.keepAlive = false
             SteamService.clearPlayingConflict()
-            clearActiveSuspendState()
         }
 
         fun clearActiveSuspendState() {
@@ -292,5 +347,116 @@ class PluviaApp : SplitCompatApplication() {
             }
         }
         Timber.w("[PluviaApp]: Could not preload system libjpeg.so (none of the candidate paths worked)")
+    }
+}
+
+/** Runs installed-library discovery only after migration recovery establishes a consistent filesystem. */
+internal suspend fun recoverAndStartInstalledLibrarySynchronization(
+    operations: GameLibraryOperations,
+    synchronizer: InstalledLibrarySynchronizer,
+    identitySource: InstalledCatalogIdentitySource,
+    observerScope: CoroutineScope,
+): Job? {
+    val recovery = try {
+        operations.recoverMigrations()
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (exception: Exception) {
+        Timber.e(exception, "Library migration startup recovery failed; installed-library scan skipped")
+        return null
+    }
+    if (recovery.pendingTransactionIds.isNotEmpty()) {
+        Timber.e(
+            "Library migration recovery remains pending=%s; installed-library scan skipped",
+            recovery.pendingTransactionIds,
+        )
+        return null
+    }
+    if (recovery.removedTransactions > 0) {
+        Timber.i(
+            "Library migration recovery removed=%d",
+            recovery.removedTransactions,
+        )
+    }
+    return startInstalledLibrarySynchronization(observerScope, identitySource, synchronizer)
+}
+
+/** Subscribes to a baseline catalog signature before scanning so concurrent catalog upserts cannot be missed. */
+internal suspend fun startInstalledLibrarySynchronization(
+    observerScope: CoroutineScope,
+    identitySource: InstalledCatalogIdentitySource,
+    synchronizer: InstalledLibrarySynchronizer,
+    initialRetryDelayMillis: Long = 1_000L,
+    maxRetryDelayMillis: Long = 30_000L,
+    retryDelay: suspend (Long) -> Unit = { delayMillis -> delay(delayMillis) },
+): Job {
+    require(initialRetryDelayMillis in 1..maxRetryDelayMillis) {
+        "Catalog observer retry delay bounds are invalid"
+    }
+    val baselineReady = CompletableDeferred<CancellationException?>()
+    val observer = observerScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        var hasSignature = false
+        var lastSignature: InstalledCatalogIdentitySignature? = null
+        var nextRetryDelayMillis = initialRetryDelayMillis
+        try {
+            while (true) {
+                var emitted = false
+                try {
+                    identitySource.observeIdentitySignatures()
+                        .distinctUntilChanged()
+                        .collect { signature ->
+                            emitted = true
+                            nextRetryDelayMillis = initialRetryDelayMillis
+                            if (!hasSignature) {
+                                hasSignature = true
+                                lastSignature = signature
+                                baselineReady.complete(null)
+                            } else if (signature != lastSignature) {
+                                lastSignature = signature
+                                synchronizeInstalledLibraries(synchronizer, "catalog identity change")
+                            }
+                        }
+                    Timber.w("Installed catalog identity observer completed; retrying")
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    Timber.e(exception, "Installed catalog identity observer failed; retrying")
+                }
+                retryDelay(nextRetryDelayMillis)
+                if (!emitted) {
+                    nextRetryDelayMillis = (nextRetryDelayMillis * 2).coerceAtMost(maxRetryDelayMillis)
+                }
+            }
+        } catch (exception: CancellationException) {
+            baselineReady.complete(exception)
+            throw exception
+        }
+    }
+    try {
+        baselineReady.await()?.let { throw it }
+    } catch (exception: CancellationException) {
+        observer.cancel()
+        throw exception
+    }
+    try {
+        synchronizeInstalledLibraries(synchronizer, "startup")
+    } catch (throwable: Throwable) {
+        observer.cancel()
+        throw throwable
+    }
+    return observer
+}
+
+/** Logs only systemic synchronization failures; isolated store failures are represented in the result. */
+private suspend fun synchronizeInstalledLibraries(
+    synchronizer: InstalledLibrarySynchronizer,
+    trigger: String,
+) {
+    try {
+        synchronizer.synchronizeAll()
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (exception: Exception) {
+        Timber.e(exception, "Installed-library synchronization failed for trigger=%s", trigger)
     }
 }

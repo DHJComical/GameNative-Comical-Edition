@@ -12,56 +12,36 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  validate:
 
     runs-on: ubuntu-latest
     env:
       HAS_SIGNING_SECRETS: ${{ secrets.KEYSTORE != '' && secrets.KEYSTORE_KEY_ALIAS != '' && secrets.KEYSTORE_KEY_PASSWORD != '' && secrets.KEYSTORE_STORE_PASSWORD != '' && secrets.PROD_KEYSTORE != '' && secrets.PROD_KEYSTORE_KEY_ALIAS != '' && secrets.PROD_KEYSTORE_KEY_PASSWORD != '' && secrets.PROD_KEYSTORE_STORE_PASSWORD != '' }}
-      HAS_DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Validate signing secrets
+      if: env.HAS_SIGNING_SECRETS != 'true'
+      run: |
+        echo "All debug and production signing secrets are required." >&2
+        exit 1
+
+  build:
+
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
     - name: set up Java 17
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
       with:
         java-version: '17'
         distribution: 'temurin'
         cache: gradle
     - name: Validate Gradle wrapper
-      uses: gradle/actions/wrapper-validation@v4
+      uses: gradle/actions/wrapper-validation@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
-
-    - name: Configure Keystore
-      if: env.HAS_SIGNING_SECRETS == 'true'
-      env:
-        KEYSTORE: ${{ secrets.KEYSTORE }}
-        KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
-        KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
-        KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
-      run: |
-        mkdir -p app/keystores
-        echo "$KEYSTORE" | base64 --decode > app/keystores/keystore
-        echo "storeFile=keystores/keystore" >> app/keystores/keystore.properties
-        echo "keyAlias=$KEYSTORE_KEY_ALIAS" >> app/keystores/keystore.properties
-        echo "storePassword=$KEYSTORE_STORE_PASSWORD" >> app/keystores/keystore.properties
-        echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
-
-    - name: Configure Production Keystore
-      if: env.HAS_SIGNING_SECRETS == 'true'
-      env:
-        PROD_KEYSTORE: ${{ secrets.PROD_KEYSTORE }}
-        PROD_KEYSTORE_KEY_ALIAS: ${{ secrets.PROD_KEYSTORE_KEY_ALIAS }}
-        PROD_KEYSTORE_KEY_PASSWORD: ${{ secrets.PROD_KEYSTORE_KEY_PASSWORD }}
-        PROD_KEYSTORE_STORE_PASSWORD: ${{ secrets.PROD_KEYSTORE_STORE_PASSWORD }}
-      run: |
-        mkdir -p app/keystores
-        echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
-        cat <<EOF > app/keystores/prod-keystore.properties
-        keyAlias=$PROD_KEYSTORE_KEY_ALIAS
-        keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
-        storePassword=$PROD_KEYSTORE_STORE_PASSWORD
-        EOF
+      uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
     - name: Inject credentials
       run: |
@@ -89,23 +69,167 @@ jobs:
         cp app/build/outputs/bundle/modernRelease/app-modern-release.aab app-modern-release.aab
         cp app/build/outputs/bundle/legacyXrRelease/app-legacyXr-release.aab app-legacy-xr-release.aab
 
-    - name: Extract APKs from Bundles
+    - name: Stop Gradle daemon
+      run: ./gradlew --stop
+
+    - name: Diagnose bundle extraction resources
       run: |
-        java -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-release.aab --output=app-release.apks --mode=universal
+        df -h
+        free -h
+        du -h app-release.aab app-modern-release.aab app-legacy-xr-release.aab
+        sha256sum app-release.aab app-modern-release.aab app-legacy-xr-release.aab
+
+    - name: Upload bundles for packaging
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: ci-release-bundles
+        path: |
+          app-release.aab
+          app-modern-release.aab
+          app-legacy-xr-release.aab
+        compression-level: 0
+        retention-days: 1
+
+  package:
+
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      HAS_DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL != '' }}
+
+    steps:
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+    - name: set up Java 17
+      uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Install Android SDK Build Tools
+      run: |
+        SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        if [ ! -x "$SDKMANAGER" ]; then
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+        fi
+        yes | "$SDKMANAGER" --install "build-tools;34.0.0"
+
+    - name: Download bundles
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        name: ci-release-bundles
+        path: .
+
+    - name: Configure Keystore
+      env:
+        KEYSTORE: ${{ secrets.KEYSTORE }}
+        KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
+        KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+      run: |
+        mkdir -p app/keystores
+        echo "$KEYSTORE" | base64 --decode > app/keystores/keystore
+        echo "storeFile=keystores/keystore" >> app/keystores/keystore.properties
+        echo "keyAlias=$KEYSTORE_KEY_ALIAS" >> app/keystores/keystore.properties
+        echo "storePassword=$KEYSTORE_STORE_PASSWORD" >> app/keystores/keystore.properties
+        echo "keyPassword=$KEYSTORE_KEY_PASSWORD" >> app/keystores/keystore.properties
+
+    - name: Configure Production Keystore
+      env:
+        PROD_KEYSTORE: ${{ secrets.PROD_KEYSTORE }}
+        PROD_KEYSTORE_KEY_ALIAS: ${{ secrets.PROD_KEYSTORE_KEY_ALIAS }}
+        PROD_KEYSTORE_KEY_PASSWORD: ${{ secrets.PROD_KEYSTORE_KEY_PASSWORD }}
+        PROD_KEYSTORE_STORE_PASSWORD: ${{ secrets.PROD_KEYSTORE_STORE_PASSWORD }}
+      run: |
+        mkdir -p app/keystores
+        echo "$PROD_KEYSTORE" | base64 --decode > app/keystores/prod.keystore
+        cat <<EOF > app/keystores/prod-keystore.properties
+        keyAlias=$PROD_KEYSTORE_KEY_ALIAS
+        keyPassword=$PROD_KEYSTORE_KEY_PASSWORD
+        storePassword=$PROD_KEYSTORE_STORE_PASSWORD
+        EOF
+
+    - name: Diagnose bundle extraction resources
+      run: |
+        df -h
+        free -h
+        du -h app-release.aab app-modern-release.aab app-legacy-xr-release.aab
+        sha256sum app-release.aab app-modern-release.aab app-legacy-xr-release.aab
+
+    - name: Extract Legacy APK from Bundle
+      run: |
+        monitor_resources() {
+          while true; do
+            date -u '+Resource snapshot: %Y-%m-%dT%H:%M:%SZ'
+            free -h
+            df -h "$GITHUB_WORKSPACE"
+            sleep 30
+          done
+        }
+        monitor_resources &
+        MONITOR_PID=$!
+        cleanup_monitor() {
+          status=$?
+          trap - EXIT
+          kill "$MONITOR_PID" 2>/dev/null || true
+          wait "$MONITOR_PID" 2>/dev/null || true
+          exit "$status"
+        }
+        trap cleanup_monitor EXIT
+        java -Xmx3g -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-release.aab --output=app-release.apks --mode=universal
         unzip -o app-release.apks universal.apk
-        java -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-modern-release.aab --output=app-modern-release.apks --mode=universal
+
+    - name: Extract Modern APK from Bundle
+      run: |
+        monitor_resources() {
+          while true; do
+            date -u '+Resource snapshot: %Y-%m-%dT%H:%M:%SZ'
+            free -h
+            df -h "$GITHUB_WORKSPACE"
+            sleep 30
+          done
+        }
+        monitor_resources &
+        MONITOR_PID=$!
+        cleanup_monitor() {
+          status=$?
+          trap - EXIT
+          kill "$MONITOR_PID" 2>/dev/null || true
+          wait "$MONITOR_PID" 2>/dev/null || true
+          exit "$status"
+        }
+        trap cleanup_monitor EXIT
+        java -Xmx3g -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-modern-release.aab --output=app-modern-release.apks --mode=universal
         unzip -p app-modern-release.apks universal.apk > universal-modern.apk
-        java -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-legacy-xr-release.aab --output=app-legacy-xr-release.apks --mode=universal
+
+    - name: Extract Legacy XR APK from Bundle
+      run: |
+        monitor_resources() {
+          while true; do
+            date -u '+Resource snapshot: %Y-%m-%dT%H:%M:%SZ'
+            free -h
+            df -h "$GITHUB_WORKSPACE"
+            sleep 30
+          done
+        }
+        monitor_resources &
+        MONITOR_PID=$!
+        cleanup_monitor() {
+          status=$?
+          trap - EXIT
+          kill "$MONITOR_PID" 2>/dev/null || true
+          wait "$MONITOR_PID" 2>/dev/null || true
+          exit "$status"
+        }
+        trap cleanup_monitor EXIT
+        java -Xmx3g -jar tools/bundletool-all-1.17.2.jar build-apks --bundle=app-legacy-xr-release.aab --output=app-legacy-xr-release.apks --mode=universal
         unzip -p app-legacy-xr-release.apks universal.apk > universal-legacy-xr.apk
 
     - name: Copy lineage file
-      if: env.HAS_SIGNING_SECRETS == 'true'
       run: |
         mkdir -p app/keystores
         cp prod-debug.lineage app/keystores/prod-debug.lineage
 
     - name: Dual sign universal APKs
-      if: env.HAS_SIGNING_SECRETS == 'true'
       env:
         DEBUG_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
         DEBUG_KEY_PASS: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
@@ -123,31 +247,53 @@ jobs:
             --lineage app/keystores/prod-debug.lineage \
             --ks app/keystores/keystore \
             --ks-key-alias "$DEBUG_ALIAS" \
-            --ks-pass pass:$DEBUG_STORE_PASS \
-            --key-pass pass:$DEBUG_KEY_PASS \
+            --ks-pass env:DEBUG_STORE_PASS \
+            --key-pass env:DEBUG_KEY_PASS \
             --next-signer --ks app/keystores/prod.keystore \
             --ks-key-alias "$PROD_ALIAS" \
-            --ks-pass pass:$PROD_STORE_PASS \
-            --key-pass pass:$PROD_KEY_PASS \
+            --ks-pass env:PROD_STORE_PASS \
+            --key-pass env:PROD_KEY_PASS \
             --out "${apk%.apk}-signed.apk" \
             "$apk"
           mv "${apk%.apk}-signed.apk" "$apk"
         done
 
+    - name: Verify signed APKs
+      run: |
+        BUILD_TOOLS_DIR="${ANDROID_HOME}/build-tools/34.0.0"
+        if [ ! -d "$BUILD_TOOLS_DIR" ]; then
+          BUILD_TOOLS_DIR="${ANDROID_SDK_ROOT}/build-tools/34.0.0"
+        fi
+        for apk in universal.apk universal-modern.apk universal-legacy-xr.apk; do
+          "${BUILD_TOOLS_DIR}/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$apk"
+        done
+
+    - name: Remove signing keys
+      if: always()
+      run: |
+        rm -f \
+          app/keystores/keystore \
+          app/keystores/keystore.properties \
+          app/keystores/prod.keystore \
+          app/keystores/prod-keystore.properties
+
     - name: Upload Legacy APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: app-release-signed
         path: ${{ github.workspace }}/universal.apk
 
     - name: Upload Modern APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: app-release-signed-modern
         path: ${{ github.workspace }}/universal-modern.apk
 
     - name: Upload Legacy XR APK
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: app-release-signed-legacy-xr
         path: ${{ github.workspace }}/universal-legacy-xr.apk
@@ -155,7 +301,16 @@ jobs:
     - name: Build changelog text
       id: changelog
       run: |
-        text=$(jq -r '.commits[] | "• " + (.message | split("\n")[0]) + " (" + .id[0:7] + ")"' "$GITHUB_EVENT_PATH")
+        text=$(jq -r '
+          (.commits // []) as $commits
+          | if ($commits | length) > 0 then
+              $commits[] | "• " + (.message | split("\n")[0]) + " (" + .id[0:7] + ")"
+            elif ((.head_commit.message // "") | length) > 0 then
+              "• " + (.head_commit.message | split("\n")[0]) + " (" + ((.head_commit.id // "unknown")[0:7]) + ")"
+            else
+              "• Manual workflow dispatch"
+            end
+        ' "$GITHUB_EVENT_PATH")
         # Stable random delimiter so newlines in $text can't terminate the heredoc.
         delim="EOF_$(openssl rand -hex 8)"
         {

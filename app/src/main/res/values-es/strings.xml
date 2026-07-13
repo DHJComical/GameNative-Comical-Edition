@@ -113,7 +113,7 @@
     <string name="downloads_status_complete">Completado</string>
     <string name="downloads_status_failed">Fallido</string>
     <string name="downloads_status_paused">Pausado</string>
-    <string name="downloads_summary">Gestiona descargas activas y almacenamiento en un solo lugar</string>
+    <string name="downloads_summary">%1$d activas • %2$d reanudables • %3$d completadas</string>
     <string name="storage_internal">Interno</string>
     <string name="storage_external">Externo</string>
     <string name="storage_free_of_total">%1$s: %2$s libres de %3$s</string>
@@ -137,7 +137,7 @@
     <string name="container_storage_move_to_internal_button">Mover a interno</string>
     <string name="container_storage_move_external_disabled">Configura una ruta de almacenamiento externo en Ajustes antes de mover juegos.</string>
     <string name="container_storage_move_success">Se movió %1$s a %2$s</string>
-    <string name="container_storage_move_failed">No se pudo mover el juego: %1$s</string>
+    <string name="container_storage_move_failed">No se pudo mover %1$s: %2$s</string>
     <string name="container_storage_remove_button">Quitar contenedor</string>
     <string name="container_storage_remove_title">Quitar contenedor</string>
     <string name="container_storage_remove_message">¿Quitar el contenedor de %1$s? Los archivos del juego permanecerán en el disco.</string>
@@ -785,14 +785,12 @@
     <string name="directinput_mapper_type">Tipo de mapeador de DirectInput</string>
     <string name="disable_mouse_input">Desactivar entrada de ratón</string>
     <string name="touchscreen_mode">Modo de pantalla táctil</string>
-    <string name="touchscreen_mode_description">Para novelas visuales y juegos de estrategia en tiempo real.</string>
     <string name="shooter_mode_toggle">Modo tirador</string>
     <string name="shooter_mode_toggle_description">Reemplaza los sticks por joysticks dinámicos.</string>
     <string name="shooter_mode_on">Activar ratón</string>
     <string name="shooter_mode_off">Activar sticks</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Configuración de gestos</string>
     <string name="gesture_settings_title">Configuración de gestos táctiles</string>
     <string name="gesture_tap">Toque</string>
     <string name="gesture_tap_subtitle">Clic izquierdo</string>
@@ -975,8 +973,8 @@
     <string name="settings_info_title">Información</string>
     <string name="settings_info_send_tip_title">Enviar propina</string>
     <string name="settings_info_send_tip_subtitle">Contribuye al desarrollo continuo.</string>
-    <string name="settings_info_ask_tip_title">Pedir propina al inicio</string>
-    <string name="settings_info_ask_tip_subtitle">Evita que aparezca el mensaje de propina.</string>
+    <string name="settings_info_show_thank_you_dialog_title">Mostrar el diálogo «Gracias por usar GameNative»</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Mostrar un mensaje de apoyo al iniciar GameNative</string>
     <string name="settings_info_source_title">Código fuente</string>
     <string name="settings_info_source_subtitle">Ve el código fuente de este proyecto.</string>
     <string name="settings_info_libraries_title">Librerías utilizadas</string>
@@ -1262,6 +1260,8 @@
     <string name="action_refresh">Actualizar</string>
     <string name="action_details">Detalles</string>
     <string name="action_add_game">Añadir juego</string>
+    <string name="add_game_local_folder">Carpeta local</string>
+    <string name="add_game_catalog_load_error">No se pudo cargar esta biblioteca de juegos.</string>
     <string name="action_system">Sistema</string>
 
     <!-- Search -->
@@ -1674,6 +1674,45 @@
     <string name="option_share_diagnostics">Compartir diagnóstico</string>
     <string name="diagnostics_share_title">Compartir registro de diagnóstico</string>
     <string name="diagnostics_share_none">Aún no hay registro de diagnóstico. Usa \"Ejecución de diagnóstico\" primero.</string>
+    <string name="steam_install_library_label">Ubicación de instalación</string>
+    <string name="steam_library_built_in">Biblioteca integrada</string>
+    <string name="steam_library_custom">Biblioteca de Steam</string>
+    <string name="install_library_title">Ubicación de instalación</string>
+    <string name="install_library_built_in">Biblioteca integrada</string>
+    <string name="install_library_custom">Biblioteca personalizada</string>
+    <string name="install_library_space_summary">Necesario: %1$s\nDisponible: %2$s</string>
+    <string name="game_libraries_title">Gestión de bibliotecas de juegos</string>
+    <string name="game_libraries_summary">Configura las bibliotecas de instalación de cada tienda</string>
+    <string name="game_libraries_open">Abrir la gestión de bibliotecas de juegos</string>
+    <string name="game_libraries_add">Añadir biblioteca</string>
+    <string name="game_libraries_built_in">Biblioteca integrada</string>
+    <string name="game_libraries_custom">Biblioteca personalizada</string>
+    <string name="game_libraries_default">Predeterminada</string>
+    <string name="game_libraries_set_default">Establecer como predeterminada</string>
+    <string name="game_libraries_conflict">Conflicto con una ruta antigua: esta biblioteca solo está disponible para detectar juegos. Migra sus juegos antes de eliminarla.</string>
+    <string name="game_libraries_invalid_path">No se pudo usar la carpeta seleccionada</string>
+    <string name="game_libraries_permission_denied">Se necesita acceso a todos los archivos para añadir bibliotecas fuera del almacenamiento de la aplicación</string>
+    <string name="game_libraries_update_failed">No se pudo actualizar la biblioteca de juegos</string>
+    <string name="game_libraries_toggle_games">Mostrar u ocultar juegos</string>
+    <string name="game_libraries_no_games">No hay juegos instalados ni descargas parciales en esta biblioteca</string>
+    <string name="game_libraries_game_details">%1$s\n%2$s</string>
+    <string name="game_libraries_migrate">Migrar juego</string>
+    <string name="game_libraries_migrate_title">Mover %1$s a</string>
+    <string name="game_libraries_no_migration_target">Añade otra biblioteca sin conflictos para esta tienda antes de migrar.</string>
+    <string name="game_libraries_remove_title">Eliminar biblioteca</string>
+    <string name="game_libraries_remove_confirm">Eliminar juegos y biblioteca</string>
+    <string name="game_libraries_remove_warning">Esto eliminará permanentemente %1$d juegos instalados y %2$d descargas parciales (aprox. %3$s), sus contenedores y cualquier partida local guardada en ellos. El registro de la biblioteca solo se eliminará cuando todas las eliminaciones se completen correctamente.</string>
+    <string name="game_libraries_remove_partial_failure">No se pudieron eliminar algunos juegos. La biblioteca sigue registrada.</string>
+    <string name="game_libraries_failed_removals">No se pudo eliminar: %1$s. La biblioteca sigue registrada; inténtalo de nuevo después de resolver el problema.</string>
+    <string name="game_libraries_pending_cleanup">%1$d transacción(es) de biblioteca interrumpida(s) aún requieren limpieza. Sus datos de origen se han conservado. ID de transacción: %2$s</string>
+    <string name="install_library_permission_denied">No se concedió acceso a todos los archivos. Selecciona una biblioteca accesible para continuar.</string>
+    <string name="install_library_permission_revoked">Se revocó el acceso a la biblioteca seleccionada. Selecciona una biblioteca accesible para continuar.</string>
+    <string name="game_libraries_operation_failed">No se pudieron actualizar las bibliotecas de juegos: %1$s</string>
+    <string name="game_libraries_loading">Cargando bibliotecas de juegos…</string>
+    <string name="store_steam">Steam</string>
+    <string name="store_gog">GOG</string>
+    <string name="store_epic_games">Epic Games</string>
+    <string name="store_amazon_games">Amazon Games</string>
 
     <string name="nexus_tab_import">Importación</string>
     <string name="nexus_tab_mods">Modificaciones</string>

@@ -104,7 +104,7 @@
     <string name="downloads_status_complete">Complet</string>
     <string name="downloads_status_failed">Eșuat</string>
     <string name="downloads_status_paused">În pauză</string>
-    <string name="downloads_summary">Gestionează descărcările active și stocarea într-un singur loc</string>
+    <string name="downloads_summary">%1$d active • %2$d reluabile • %3$d finalizate</string>
     <string name="storage_internal">Intern</string>
     <string name="storage_external">Extern</string>
     <string name="storage_free_of_total">%1$s: %2$s liber din %3$s</string>
@@ -128,7 +128,7 @@
     <string name="container_storage_move_to_internal_button">Mută pe intern</string>
     <string name="container_storage_move_external_disabled">Setează o cale de stocare externă în Setări înainte de a muta jocuri.</string>
     <string name="container_storage_move_success">S-a mutat %1$s în %2$s</string>
-    <string name="container_storage_move_failed">Mutarea jocului a eșuat: %1$s</string>
+    <string name="container_storage_move_failed">Nu s-a putut muta %1$s: %2$s</string>
     <string name="container_storage_remove_button">Elimină containerul</string>
     <string name="container_storage_remove_title">Elimină containerul</string>
     <string name="container_storage_remove_message">Elimini containerul pentru %1$s? Fișierele jocului vor rămâne pe disc.</string>
@@ -741,14 +741,12 @@
 	<string name="directinput_mapper_type">Tip mapper DirectInput</string>
 	<string name="disable_mouse_input">Dezactivează input-ul de mouse</string>
 	<string name="touchscreen_mode">Mod touchscreen</string>
-	<string name="touchscreen_mode_description">Pentru visual novels și jocuri RTS</string>
 	<string name="shooter_mode_toggle">Mod shooter</string>
 	<string name="shooter_mode_toggle_description">Înlocuiește stick-urile cu joystick-uri dinamice</string>
 	<string name="shooter_mode_on">Activează mouse-ul</string>
 	<string name="shooter_mode_off">Activează stick-urile</string>
 
 	<!-- Gesture Settings Dialog -->
-	<string name="gesture_settings">Setări gesturi</string>
 	<string name="gesture_settings_title">Setări gesturi touch</string>
 	<string name="gesture_tap">Atingere</string>
 	<string name="gesture_tap_subtitle">Clic stânga</string>
@@ -968,8 +966,8 @@
 	<string name="settings_info_title">Informații</string>
 	<string name="settings_info_send_tip_title">Trimite un tip</string>
 	<string name="settings_info_send_tip_subtitle">Contribuie la dezvoltarea continuă</string>
-	<string name="settings_info_ask_tip_title">Cere tip la pornire</string>
-	<string name="settings_info_ask_tip_subtitle">Oprește afișarea mesajului de tip</string>
+	<string name="settings_info_show_thank_you_dialog_title">Afișează dialogul „Mulțumim că folosești GameNative”</string>
+	<string name="settings_info_show_thank_you_dialog_subtitle">Afișează un mesaj de susținere la pornirea GameNative</string>
 	<string name="settings_info_source_title">Cod sursă</string>
 	<string name="settings_info_source_subtitle">Vezi codul sursă al acestui proiect</string>
 	<string name="settings_info_libraries_title">Biblioteci utilizate</string>
@@ -1254,6 +1252,8 @@
 	<string name="action_refresh">Reîmprospătează</string>
 	<string name="action_details">Detalii</string>
 	<string name="action_add_game">Adaugă joc</string>
+    <string name="add_game_local_folder">Folder local</string>
+    <string name="add_game_catalog_load_error">Această bibliotecă de jocuri nu a putut fi încărcată.</string>
 	<string name="action_system">Sistem</string>
 
 	<!-- Search -->
@@ -1677,6 +1677,45 @@
     <string name="option_share_diagnostics">Partajează diagnosticarea</string>
     <string name="diagnostics_share_title">Partajează jurnalul de diagnosticare</string>
     <string name="diagnostics_share_none">Încă nu există jurnal de diagnosticare. Folosește mai întâi \"Rulare de diagnosticare\".</string>
+    <string name="install_library_title">Locul instalării</string>
+    <string name="install_library_built_in">Bibliotecă integrată</string>
+    <string name="install_library_custom">Bibliotecă personalizată</string>
+    <string name="install_library_space_summary">Necesar: %1$s\nDisponibil: %2$s</string>
+    <string name="game_libraries_title">Gestionarea bibliotecilor de jocuri</string>
+    <string name="game_libraries_summary">Configurează bibliotecile de instalare pentru fiecare magazin</string>
+    <string name="game_libraries_open">Deschide gestionarea bibliotecilor de jocuri</string>
+    <string name="game_libraries_add">Adaugă o bibliotecă</string>
+    <string name="game_libraries_built_in">Bibliotecă integrată</string>
+    <string name="game_libraries_custom">Bibliotecă personalizată</string>
+    <string name="game_libraries_default">Implicită</string>
+    <string name="game_libraries_set_default">Setează ca implicită</string>
+    <string name="game_libraries_conflict">Conflict cu o cale veche: această bibliotecă este disponibilă doar pentru detectare. Migrează jocurile înainte de a o elimina.</string>
+    <string name="game_libraries_invalid_path">Directorul selectat nu a putut fi utilizat</string>
+    <string name="game_libraries_permission_denied">Accesul la toate fișierele este necesar pentru a adăuga biblioteci din afara spațiului de stocare al aplicației</string>
+    <string name="game_libraries_update_failed">Actualizarea bibliotecii de jocuri a eșuat</string>
+    <string name="game_libraries_toggle_games">Afișează sau ascunde jocurile</string>
+    <string name="game_libraries_no_games">Nu există jocuri instalate sau descărcări parțiale în această bibliotecă</string>
+    <string name="game_libraries_game_details">%1$s\n%2$s</string>
+    <string name="game_libraries_migrate">Migrează jocul</string>
+    <string name="game_libraries_migrate_title">Mută %1$s în</string>
+    <string name="game_libraries_no_migration_target">Adaugă o altă bibliotecă fără conflicte pentru acest magazin înainte de migrare.</string>
+    <string name="game_libraries_remove_title">Elimină biblioteca</string>
+    <string name="game_libraries_remove_confirm">Șterge jocurile și elimină biblioteca</string>
+    <string name="game_libraries_remove_warning">Această acțiune șterge definitiv %1$d jocuri instalate și %2$d descărcări parțiale (aproximativ %3$s), containerele lor și toate salvările locale stocate în acele containere. Înregistrarea bibliotecii este eliminată numai după ce toate ștergerile reușesc.</string>
+    <string name="game_libraries_remove_partial_failure">Unele jocuri nu au putut fi șterse. Biblioteca rămâne înregistrată.</string>
+    <string name="game_libraries_failed_removals">Eliminarea a eșuat pentru: %1$s. Biblioteca rămâne înregistrată; încearcă din nou după rezolvarea problemei.</string>
+    <string name="game_libraries_pending_cleanup">%1$d tranzacții de bibliotecă întrerupte încă necesită curățare. Datele sursă au fost păstrate. ID-urile tranzacțiilor: %2$s</string>
+    <string name="install_library_permission_denied">Accesul la toate fișierele nu a fost acordat. Selectează o bibliotecă accesibilă pentru a continua.</string>
+    <string name="install_library_permission_revoked">Accesul la biblioteca selectată a fost revocat. Selectează o bibliotecă accesibilă pentru a continua.</string>
+    <string name="game_libraries_operation_failed">Bibliotecile de jocuri nu au putut fi actualizate: %1$s</string>
+    <string name="game_libraries_loading">Se încarcă bibliotecile de jocuri…</string>
+    <string name="store_steam">Steam</string>
+    <string name="store_gog">GOG</string>
+    <string name="store_epic_games">Epic Games</string>
+    <string name="store_amazon_games">Amazon Games</string>
+    <string name="steam_install_library_label">Locul instalării</string>
+    <string name="steam_library_built_in">Bibliotecă integrată</string>
+    <string name="steam_library_custom">Bibliotecă Steam</string>
 
     <string name="nexus_tab_import">Import</string>
     <string name="nexus_tab_mods">Mods</string>

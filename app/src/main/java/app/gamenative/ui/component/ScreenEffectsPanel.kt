@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -62,7 +61,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -83,6 +81,7 @@ import com.winlator.container.Container
 import com.winlator.renderer.GLRenderer
 import com.winlator.renderer.VulkanRenderer
 import kotlinx.coroutines.delay
+import timber.log.Timber
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -758,8 +757,9 @@ fun ScreenEffectsPanel(
                 try {
                     firstItemFocusRequester.requestFocus()
                     return@LaunchedEffect
-                } catch (_: Exception) {
-                    kotlinx.coroutines.delay(80)
+                } catch (error: IllegalStateException) {
+                    Timber.w(error, "Screen Effects initial focus target is not ready")
+                    delay(80)
                 }
             }
         }
@@ -961,7 +961,7 @@ fun ScreenEffectsPanel(
 }
 
 @Composable
-private fun ScreenEffectAdjustmentRow(
+internal fun ScreenEffectAdjustmentRow(
     title: String,
     valueText: String,
     progress: Float,
@@ -972,127 +972,84 @@ private fun ScreenEffectAdjustmentRow(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
     val accentColor = PluviaTheme.colors.accentPurple
-    val shape = RoundedCornerShape(14.dp)
     var isAdjustmentLocked by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(shape)
-            .background(
-                if (isFocused) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.16f),
-                            accentColor.copy(alpha = 0.08f),
-                        ),
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f),
-                        ),
-                    )
-                },
-            )
-            .then(
-                if (isFocused && !isAdjustmentLocked) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = accentColor.copy(alpha = 0.7f),
-                        shape = shape,
-                    )
-                } else {
-                    Modifier
-                },
-            )
-            .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .onFocusChanged {
-                if (!it.isFocused) {
-                    isAdjustmentLocked = false
-                }
-            }
-            .focusable(interactionSource = interactionSource)
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && isFocused) {
-                    when {
-                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_A -> {
-                            isAdjustmentLocked = !isAdjustmentLocked
-                            true
-                        }
-
-                        isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_B -> {
-                            isAdjustmentLocked = false
-                            true
-                        }
-
-                        isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            onDecrease()
-                            true
-                        }
-
-                        isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            onIncrease()
-                            true
-                        }
-
-                        else -> false
-                    }
-                } else {
-                    false
-                }
-            }
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {},
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .fillMaxWidth(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = valueText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isFocused) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (isAdjustmentLocked) {
+        AppMenuRow(
+            headline = title,
+            behavior = AppMenuRowBehavior.Content(
+                interactionModifier = Modifier
+                    .onFocusChanged {
+                        if (!it.isFocused) {
+                            isAdjustmentLocked = false
+                        }
+                    }
+                    .focusable(interactionSource = interactionSource)
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && isFocused) {
+                            when {
+                                keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_A -> {
+                                    isAdjustmentLocked = !isAdjustmentLocked
+                                    true
+                                }
+
+                                isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_B -> {
+                                    isAdjustmentLocked = false
+                                    true
+                                }
+
+                                isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                    onDecrease()
+                                    true
+                                }
+
+                                isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                    onIncrease()
+                                    true
+                                }
+
+                                else -> false
+                            }
+                        } else {
+                            false
+                        }
+                    },
+            ),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
-                        text = "●",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = valueText,
+                        style = MaterialTheme.typography.labelLarge,
                         color = accentColor,
                     )
+                    if (isAdjustmentLocked) {
+                        Text(
+                            text = "●",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = accentColor,
+                        )
+                    }
                 }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
+            },
+            variant = AppMenuRowVariant.Default,
+            interactionColor = accentColor,
+            focusRequester = focusRequester,
+            interactionSource = interactionSource,
+            scaleOnFocus = false,
+        )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(36.dp),
+                .height(46.dp)
+                .padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -1201,83 +1158,33 @@ private fun ScreenEffectAdjustmentButton(
 }
 
 @Composable
-private fun ScreenEffectToggleRow(
+internal fun ScreenEffectToggleRow(
     title: String,
     subtitle: String? = null,
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
     val accentColor = PluviaTheme.colors.accentPurple
 
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (isFocused) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.16f),
-                            accentColor.copy(alpha = 0.08f),
-                        ),
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f),
-                        ),
-                    )
-                },
-            )
-            .then(
-                if (isFocused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = accentColor.copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(14.dp),
-                    )
-                } else {
-                    Modifier
-                },
-            )
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onToggle,
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        Box(contentAlignment = Alignment.CenterEnd) {
+    AppMenuRow(
+        headline = title,
+        supporting = subtitle,
+        behavior = AppMenuRowBehavior.Toggle(
+            checked = enabled,
+            onCheckedChange = { onToggle() },
+        ),
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        trailing = {
             ScreenEffectSwitch(enabled = enabled, accentColor = accentColor)
-        }
-    }
+        },
+        variant = AppMenuRowVariant.Default,
+        interactionColor = accentColor,
+        scaleOnFocus = false,
+    )
 }
 
 @Composable
-private fun ScreenEffectRadioRow(
+internal fun ScreenEffectRadioRow(
     title: String,
     subtitle: String? = null,
     selected: Boolean,
@@ -1285,70 +1192,25 @@ private fun ScreenEffectRadioRow(
     focusRequester: FocusRequester? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
     val accentColor = PluviaTheme.colors.accentPurple
-    val shape = RoundedCornerShape(14.dp)
 
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(shape)
-            .background(
-                if (isFocused) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.16f),
-                            accentColor.copy(alpha = 0.08f),
-                        ),
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f),
-                        ),
-                    )
-                },
-            )
-            .then(
-                if (isFocused) {
-                    Modifier.border(width = 2.dp, color = accentColor.copy(alpha = 0.7f), shape = shape)
-                } else {
-                    Modifier
-                },
-            )
-            .then(
-                if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier,
-            )
-            .selectable(
-                selected = selected,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onSelect,
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        ScreenEffectRadioIndicator(selected = selected, accentColor = accentColor)
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (selected || isFocused) FontWeight.SemiBold else FontWeight.Medium,
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
+    AppMenuRow(
+        headline = title,
+        supporting = subtitle,
+        behavior = AppMenuRowBehavior.Radio(
+            selected = selected,
+            onClick = onSelect,
+        ),
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        leading = {
+            ScreenEffectRadioIndicator(selected = selected, accentColor = accentColor)
+        },
+        variant = AppMenuRowVariant.Default,
+        interactionColor = accentColor,
+        focusRequester = focusRequester,
+        interactionSource = interactionSource,
+        scaleOnFocus = false,
+    )
 }
 
 @Composable

@@ -16,9 +16,7 @@ import app.gamenative.events.AndroidEvent
 import app.gamenative.service.SteamService
 import app.gamenative.service.amazon.AmazonConstants
 import app.gamenative.service.amazon.AmazonService
-import app.gamenative.service.epic.EpicConstants
 import app.gamenative.service.epic.EpicService
-import app.gamenative.service.gog.GOGConstants
 import app.gamenative.service.gog.GOGService
 import app.gamenative.ui.data.CancelConfirmation
 import app.gamenative.ui.data.DownloadItemState
@@ -621,23 +619,13 @@ class DownloadsViewModel @Inject constructor(
                 }
 
                 GameSource.GOG -> {
-                    val game = gogGameDao.getById(item.appId) ?: return@launch
-                    val installPath = game.installPath.ifBlank { GOGConstants.getGameInstallPath(game.title) }
-                    val container = ContainerUtils.getOrCreateContainer(appContext, "${GameSource.GOG.name}_${item.appId}")
-                    val language = ContainerUtils.toContainerData(container).language
-                    val result = GOGService.downloadGame(appContext, item.appId, installPath, language)
+                    val result = GOGService.resumeDownload(appContext, item.appId)
                     result.exceptionOrNull()?.message?.let { recentFailureMessages[key] = it }
                 }
 
                 GameSource.EPIC -> {
                     val id = item.appId.toIntOrNull() ?: return@launch
-                    val game = epicGameDao.getById(id) ?: return@launch
-                    val installPath = game.installPath.ifBlank {
-                        EpicConstants.getGameInstallPath(appContext, game.appName)
-                    }
-                    val container = ContainerUtils.getOrCreateContainer(appContext, "${GameSource.EPIC.name}_${item.appId}")
-                    val language = ContainerUtils.toContainerData(container).language
-                    val result = EpicService.downloadGame(appContext, id, emptyList(), installPath, language)
+                    val result = EpicService.resumeDownload(appContext, id)
                     result.exceptionOrNull()?.message?.let { recentFailureMessages[key] = it }
                 }
 

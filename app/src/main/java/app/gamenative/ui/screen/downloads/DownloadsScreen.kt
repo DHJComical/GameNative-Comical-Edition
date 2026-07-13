@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -73,6 +74,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,7 +99,7 @@ import com.skydoves.landscapist.coil.CoilImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private enum class DownloadsSection(
+enum class DownloadsSection(
     val titleResId: Int,
     val icon: ImageVector,
 ) {
@@ -113,18 +115,17 @@ private enum class DownloadsSection(
 
 @Composable
 fun HomeDownloadsScreen(
+    section: DownloadsSection = DownloadsSection.Downloads,
     onBack: () -> Unit = {},
     onClickPlay: (String, Boolean) -> Unit,
     onTestGraphics: (String) -> Unit,
     onPlayWithDiagnostics: (String) -> Unit,
+    onGameLibrariesClick: () -> Unit = {},
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val storageManagerState = rememberContainerStorageManagerUiState()
     val scope = rememberCoroutineScope()
-    var selectedSectionIndex by rememberSaveable { mutableIntStateOf(DownloadsSection.Storage.ordinal) }
-    val sections = remember { DownloadsSection.values().toList() }
-    val selectedSection = sections.getOrElse(selectedSectionIndex) { DownloadsSection.Downloads }
     var selectedLibraryItem by remember { mutableStateOf<LibraryItem?>(null) }
     var openGameRequestId by rememberSaveable { mutableIntStateOf(0) }
 
@@ -190,79 +191,49 @@ fun HomeDownloadsScreen(
                 .displayCutoutPadding(),
         ) {
             DownloadsHeader(
-                title = stringResource(selectedSection.titleResId),
+                title = stringResource(section.titleResId),
                 onBack = onBack,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
 
-            val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
-
-            if (isPortrait) {
-                // Portrait: horizontal tab row above the content
-                DownloadsTabRow(
-                    sections = sections,
-                    selectedSection = selectedSection,
-                    onSectionSelected = { selectedSectionIndex = it.ordinal },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                )
-            }
-
-            Row(
+            Surface(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 16.dp, vertical = if (isPortrait) 0.dp else 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = PluviaTheme.colors.surfacePanel.copy(alpha = 0.94f),
+                tonalElevation = 2.dp,
+                shadowElevation = 12.dp,
             ) {
-                if (!isPortrait) {
-                    DownloadsSidebar(
-                        sections = sections,
-                        selectedSection = selectedSection,
-                        onSectionSelected = { selectedSectionIndex = it.ordinal },
+                when (section) {
+                    DownloadsSection.Downloads -> DownloadsContent(
+                        state = state,
+                        onResumeDownload = viewModel::onResumeDownload,
+                        onPauseDownload = viewModel::onPauseDownload,
+                        onCancelDownload = viewModel::onCancelDownload,
+                        onPauseAll = viewModel::onPauseAll,
+                        onResumeAll = viewModel::onResumeAll,
+                        onCancelAll = viewModel::onCancelAll,
+                        onClearFinished = viewModel::onClearFinished,
+                        onOpenGame = { item ->
+                            openGame(item.gameSource, item.appId, item.gameName, item.iconUrl)
+                        },
                         modifier = Modifier
-                            .width(96.dp)
-                            .fillMaxHeight(),
+                            .fillMaxSize()
+                            .padding(20.dp),
                     )
-                }
 
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    shape = RoundedCornerShape(24.dp),
-                    color = PluviaTheme.colors.surfacePanel.copy(alpha = 0.94f),
-                    tonalElevation = 2.dp,
-                    shadowElevation = 12.dp,
-                ) {
-                    when (selectedSection) {
-                        DownloadsSection.Downloads -> DownloadsContent(
-                            state = state,
-                            onResumeDownload = viewModel::onResumeDownload,
-                            onPauseDownload = viewModel::onPauseDownload,
-                            onCancelDownload = viewModel::onCancelDownload,
-                            onPauseAll = viewModel::onPauseAll,
-                            onResumeAll = viewModel::onResumeAll,
-                            onCancelAll = viewModel::onCancelAll,
-                            onClearFinished = viewModel::onClearFinished,
-                            onOpenGame = { item ->
-                                openGame(item.gameSource, item.appId, item.gameName, item.iconUrl)
-                            },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                        )
-
-                        DownloadsSection.Storage -> ContainerStorageManagerContent(
-                            state = storageManagerState,
-                            onOpenGame = { gameSource, appId, name, iconUrl ->
-                                openGame(gameSource, appId.removePrefix("${gameSource.name}_"), name, iconUrl)
-                            },
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(20.dp),
-                        )
-                    }
+                    DownloadsSection.Storage -> ContainerStorageManagerContent(
+                        state = storageManagerState,
+                        onGameLibrariesClick = onGameLibrariesClick,
+                        onOpenGame = { gameSource, appId, name, iconUrl ->
+                            openGame(gameSource, appId.removePrefix("${gameSource.name}_"), name, iconUrl)
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp),
+                    )
                 }
             }
         }
@@ -296,7 +267,7 @@ private fun DownloadsHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        BackButton(onClick = onBack)
+        DownloadsBackButton(onClick = onBack)
 
         Text(
             text = title,
@@ -650,7 +621,7 @@ private fun DownloadsToolbarButton(
 }
 
 @Composable
-private fun BackButton(
+internal fun DownloadsBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -685,10 +656,10 @@ private fun BackButton(
                     Modifier.border(1.dp, PluviaTheme.colors.borderDefault.copy(alpha = 0.3f), CircleShape)
                 }
             )
-            .selectable(
-                selected = isFocused,
+            .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -696,7 +667,7 @@ private fun BackButton(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
             contentDescription = stringResource(R.string.back),
-            tint = if (isFocused) PluviaTheme.colors.accentPurple else Color.White.copy(alpha = 0.8f),
+            tint = if (isFocused) PluviaTheme.colors.accentPurple else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp),
         )
     }
@@ -956,7 +927,7 @@ private fun DownloadItemCard(
 }
 
 @Composable
-private fun GameArtworkButton(
+internal fun GameArtworkButton(
     imageUrl: String,
     contentDescription: String,
     placeholderIcon: ImageVector,
@@ -987,10 +958,10 @@ private fun GameArtworkButton(
                 },
                 shape = RoundedCornerShape(10.dp),
             )
-            .selectable(
-                selected = isFocused,
+            .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -1098,7 +1069,7 @@ private fun statusContentColor(status: DownloadItemStatus): Color = when (status
 }
 
 @Composable
-private fun DownloadActionButton(
+internal fun DownloadActionButton(
     imageVector: ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
@@ -1137,10 +1108,10 @@ private fun DownloadActionButton(
                 },
                 shape = CircleShape,
             )
-            .selectable(
-                selected = isFocused,
+            .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,

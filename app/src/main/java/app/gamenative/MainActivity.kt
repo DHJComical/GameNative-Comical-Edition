@@ -396,14 +396,14 @@ class MainActivity : ComponentActivity() {
         // Restart GOG service if it went down
         if (GOGService.hasStoredCredentials(this) && !GOGService.isRunning) {
             Timber.i("GOG service was down on resume - restarting")
-            GOGService.start(this)
+            GOGService.startForDownloadRecovery(this)
         }
 
         // Restart EpicService if it went down and user is authenticated
         if (EpicService.hasStoredCredentials(this) &&
             !EpicService.isRunning) {
             Timber.i("EpicService was down on resume - restarting")
-            EpicService.start(this)
+            EpicService.startForDownloadRecovery(this)
         }
 
         if (PrefManager.usageAnalyticsEnabled) {

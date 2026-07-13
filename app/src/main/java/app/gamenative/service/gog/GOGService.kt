@@ -4,23 +4,39 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
+import app.gamenative.PrefManager
 import app.gamenative.data.DownloadInfo
 import app.gamenative.data.GOGCredentials
 import app.gamenative.data.GOGGame
 import app.gamenative.data.LaunchInfo
 import app.gamenative.data.LibraryItem
+import app.gamenative.data.DownloadStore
+import app.gamenative.data.GameSource
+import app.gamenative.data.StoreDownloadOperation
+import app.gamenative.data.StoreDownloadState
+import app.gamenative.data.StoreDownloadTask
+import app.gamenative.data.library.GameLibraryRepository
+import app.gamenative.data.library.GogLibraryLayout
+import app.gamenative.db.dao.StoreDownloadTaskDao
 import app.gamenative.events.AndroidEvent
 import app.gamenative.PluviaApp
 import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.service.NotificationHelper
 import app.gamenative.utils.ContainerUtils
+import app.gamenative.utils.MarkerUtils
+import com.winlator.container.Container
+import com.winlator.core.envvars.EnvVars
+import com.winlator.xenvironment.components.GuestProgramLauncherComponent
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
 
@@ -41,9 +57,12 @@ import timber.log.Timber
 @AndroidEntryPoint
 class GOGService : Service() {
 
+    private var taskRecoveryJob: Job? = null
+
     companion object {
         private const val ACTION_SYNC_LIBRARY = "app.gamenative.GOG_SYNC_LIBRARY"
         private const val ACTION_MANUAL_SYNC = "app.gamenative.GOG_MANUAL_SYNC"
+        private const val ACTION_DOWNLOAD_RECOVERY = "app.gamenative.GOG_DOWNLOAD_RECOVERY"
         private const val SYNC_THROTTLE_MILLIS = 15 * 60 * 1000L // 15 minutes
 
         private var instance: GOGService? = null
@@ -51,6 +70,7 @@ class GOGService : Service() {
         // Sync tracking variables
         private var syncInProgress: Boolean = false
         private var backgroundSyncJob: Job? = null
+        private val catalogSyncMutex = Mutex()
         private var lastSyncTimestamp: Long = 0L
         private var hasPerformedInitialSync: Boolean = false
 
@@ -87,6 +107,15 @@ class GOGService : Service() {
                 // Start service without sync action
             }
             context.startForegroundService(intent)
+        }
+
+        /** Starts persisted download recovery without refreshing the owned catalog. */
+        fun startForDownloadRecovery(context: Context) {
+            if (!isRunning) {
+                context.startForegroundService(Intent(context, GOGService::class.java).apply {
+                    action = ACTION_DOWNLOAD_RECOVERY
+                })
+            }
         }
 
         fun triggerLibrarySync(context: Context) {
@@ -202,42 +231,53 @@ class GOGService : Service() {
 
         private fun hasPartialDownload(game: GOGGame): Boolean {
             if (game.isInstalled) return false
-            val title = game.title.ifBlank { return false }
-            val installPath = GOGConstants.getGameInstallPath(title)
-            return app.gamenative.utils.MarkerUtils.hasPartialInstall(installPath)
+            val instance = getInstance() ?: return false
+            return runBlocking(Dispatchers.IO) {
+                val task = instance.storeDownloadTaskDao.find(DownloadStore.GOG, game.id)
+                task != null && task.state != StoreDownloadState.PREPARING && File(task.installPath).exists()
+            }
         }
 
         fun hasPartialDownload(gameId: String, fallbackTitle: String? = null): Boolean {
             getGOGGameOf(gameId)?.let { return hasPartialDownload(it) }
-            val title = fallbackTitle?.ifBlank { null } ?: return false
-            val installPath = GOGConstants.getGameInstallPath(title)
-            return app.gamenative.utils.MarkerUtils.hasPartialInstall(installPath)
+            fallbackTitle?.ifBlank { null } ?: return false
+            val instance = getInstance() ?: return false
+            return runBlocking(Dispatchers.IO) {
+                instance.storeDownloadTaskDao.find(DownloadStore.GOG, gameId)
+                    ?.let { it.state != StoreDownloadState.PREPARING && File(it.installPath).exists() }
+                    ?: false
+            }
         }
 
-        private fun getPartialInstallPaths(): Set<String> {
-            val roots = buildList {
-                add(GOGConstants.internalGOGGamesPath)
-                if (app.gamenative.PrefManager.externalStoragePath.isNotBlank()) {
-                    add(GOGConstants.externalGOGGamesPath)
-                }
-            }.distinct()
-
-            return roots.asSequence()
-                .flatMap { root -> app.gamenative.utils.MarkerUtils.findResumablePartialInstalls(root).asSequence() }
-                .toSet()
+        private suspend fun getPartialInstallPaths(instance: GOGService): Set<String> {
+            val snapshot = instance.gameLibraryRepository.getSnapshot()
+            val registeredRoots = snapshot.libraries
+                .filter { it.source == GameSource.GOG }
+                .map { GogLibraryLayout.installRoot(it.rootPath) }
+            val scanned = registeredRoots.asSequence()
+                .flatMap { MarkerUtils.findResumablePartialInstalls(it).asSequence() }
+            val persisted = instance.storeDownloadTaskDao.getAll().asSequence()
+                .filter { it.store == DownloadStore.GOG }
+                .map(StoreDownloadTask::installPath)
+                .filter { File(it).exists() }
+            return (scanned + persisted).toSet()
         }
 
         suspend fun getPartialDownloads(): List<String> {
             val instance = getInstance() ?: return emptyList()
-            val partialInstallPaths = getPartialInstallPaths()
+            instance.importLegacyPartialDownloadsOnce()
+            val partialInstallPaths = getPartialInstallPaths(instance)
             if (partialInstallPaths.isEmpty()) return emptyList()
+            val taskPaths = instance.storeDownloadTaskDao.getAll()
+                .filter { it.store == DownloadStore.GOG }
+                .associate { it.gameKey to it.installPath }
 
             return instance.gogManager.getNonInstalledGames()
                 .asSequence()
                 .filter { game -> !instance.activeDownloads.containsKey(game.id) }
                 .filter { game ->
-                    val title = game.title.ifBlank { return@filter false }
-                    partialInstallPaths.contains(GOGConstants.getGameInstallPath(title))
+                    val taskPath = taskPaths[game.id]
+                    taskPath != null && partialInstallPaths.contains(taskPath)
                 }
                 .map { it.id }
                 .toList()
@@ -315,17 +355,17 @@ class GOGService : Service() {
          * Resolves the effective launch executable for a GOG game (container config or auto-detected).
          * Returns empty string if no executable can be found.
          */
-        suspend fun getLaunchExecutable(appId: String, container: com.winlator.container.Container): String {
+        suspend fun getLaunchExecutable(appId: String, container: Container): String {
             return getInstance()?.gogManager?.getLaunchExecutable(appId, container) ?: ""
         }
 
         fun getGogWineStartCommand(
             libraryItem: LibraryItem,
-            container: com.winlator.container.Container,
+            container: Container,
             bootToContainer: Boolean,
             appLaunchInfo: LaunchInfo?,
-            envVars: com.winlator.core.envvars.EnvVars,
-            guestProgramLauncherComponent: com.winlator.xenvironment.components.GuestProgramLauncherComponent,
+            envVars: EnvVars,
+            guestProgramLauncherComponent: GuestProgramLauncherComponent,
             gameId: Int,
         ): String {
             return getInstance()?.gogManager?.getGogWineStartCommand(
@@ -334,12 +374,72 @@ class GOGService : Service() {
         }
 
         suspend fun refreshLibrary(context: Context): Result<Int> {
-            return getInstance()?.gogManager?.refreshLibrary(context)
-                ?: Result.failure(Exception("Service not available"))
+            return catalogSyncMutex.withLock {
+                getInstance()?.gogManager?.refreshLibrary(context)
+                    ?: Result.failure(Exception("Service not available"))
+            }
         }
 
-        fun downloadGame(context: Context, gameId: String, installPath: String, containerLanguage: String): Result<DownloadInfo?> {
+        /** Starts or resumes a download in the selected registered GOG library. */
+        suspend fun downloadGame(
+            context: Context,
+            gameId: String,
+            libraryId: String,
+            containerLanguage: String,
+        ): Result<DownloadInfo?> {
             val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
+            return instance.startDownload(context, gameId, libraryId, containerLanguage)
+        }
+
+        /** Returns the durable task path first, then an installed game's exact database path. */
+        suspend fun getResumableInstallPath(gameId: String): String? {
+            val instance = getInstance() ?: return null
+            return instance.storeDownloadTaskDao.find(DownloadStore.GOG, gameId)?.installPath
+                ?: instance.gogManager.getGameFromDbById(gameId)?.installPath?.takeIf { it.isNotBlank() }
+        }
+
+        /** Resumes GOG from the exact path and language stored before process death. */
+        suspend fun resumeDownload(context: Context, gameId: String): Result<DownloadInfo?> {
+            val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
+            val task = instance.storeDownloadTaskDao.find(DownloadStore.GOG, gameId)
+                ?: return Result.failure(IllegalStateException("No durable GOG download task for game: $gameId"))
+            return instance.startDownload(
+                context = context,
+                gameId = gameId,
+                requestedLibraryId = task.libraryId,
+                containerLanguage = task.language,
+                requestedInstallPath = task.installPath,
+            )
+        }
+
+        /**
+         * Compatibility entry point for callers that already hold an exact installed/partial path.
+         * The path must still belong to a currently registered and accessible GOG library.
+         */
+        suspend fun downloadGameAtPath(
+            context: Context,
+            gameId: String,
+            installPath: String,
+            containerLanguage: String,
+        ): Result<DownloadInfo?> {
+            val instance = getInstance() ?: return Result.failure(Exception("Service not available"))
+            return instance.startDownload(context, gameId, null, containerLanguage, installPath)
+        }
+
+        private suspend fun GOGService.startDownload(
+            context: Context,
+            gameId: String,
+            requestedLibraryId: String?,
+            containerLanguage: String,
+            requestedInstallPath: String? = null,
+        ): Result<DownloadInfo?> {
+            val prepared = try {
+                prepareDownload(gameId, requestedLibraryId, requestedInstallPath, containerLanguage)
+            } catch (exception: Exception) {
+                Timber.e(exception, "[Download] Failed to resolve GOG installation for $gameId")
+                return Result.failure(exception)
+            }
+            val installPath = prepared.installPath
 
             // Create DownloadInfo for progress tracking
             val downloadInfo = DownloadInfo(jobCount = 1, gameId = 0, downloadingAppIds = CopyOnWriteArrayList<Int>())
@@ -351,19 +451,25 @@ class GOGService : Service() {
             }
 
             // Track in activeDownloads first
-            instance.activeDownloads[gameId] = downloadInfo
-            instance.notifierOrNull?.trackDownload(downloadInfo, "", NotificationHelper.NOTIFICATION_ID_GOG)
+            activeDownloads[gameId] = downloadInfo
+            notifierOrNull?.trackDownload(downloadInfo, "", NotificationHelper.NOTIFICATION_ID_GOG)
 
             // Launch download in service scope so it runs independently
-            val job = instance.scope.launch {
+            val job = scope.launch {
                 try {
+                    storeDownloadTaskDao.updateState(
+                        DownloadStore.GOG,
+                        gameId,
+                        StoreDownloadState.RUNNING,
+                        System.currentTimeMillis(),
+                    )
                     Timber.d("[Download] Starting download for game $gameId")
                     val commonRedistDir = File(installPath, "_CommonRedist")
                     Timber.tag("GOG").d("Will install dependencies to _CommonRedist")
 
-                    val result = instance.gogDownloadManager.downloadGame(
+                    val result = gogDownloadManager.downloadGame(
                         gameId, File(installPath),
-                        downloadInfo, containerLanguage, true, commonRedistDir,
+                        downloadInfo, prepared.language, true, commonRedistDir,
                     )
 
                     if (result.isFailure) {
@@ -371,6 +477,12 @@ class GOGService : Service() {
                         Timber.e(error, "[Download] Failed for game $gameId")
                         downloadInfo.setProgress(-1.0f)
                         downloadInfo.setActive(false)
+                        storeDownloadTaskDao.updateState(
+                            DownloadStore.GOG,
+                            gameId,
+                            StoreDownloadState.FAILED,
+                            System.currentTimeMillis(),
+                        )
 
                         SnackbarManager.show("Download failed: ${error?.message ?: "Unknown error"}")
                     } else {
@@ -381,8 +493,8 @@ class GOGService : Service() {
                         val appId = "GOG_$gameId"
                         val numericGameId = gameId.toIntOrNull()
                         try {
-                            val gogGame = instance.gogManager.getGameFromDbById(gameId)
-                            val locations = if (gogGame != null) instance.gogManager.getSaveDirectoryPath(context, appId, gogGame.title) else null
+                            val gogGame = gogManager.getGameFromDbById(gameId)
+                            val locations = if (gogGame != null) gogManager.getSaveDirectoryPath(context, appId, gogGame.title) else null
                             if (numericGameId != null && !locations.isNullOrEmpty() && !ContainerUtils.isLocalSavesOnly(context, appId)) {
                                 try {
                                     downloadInfo.setPostInstallSyncing(true)
@@ -408,11 +520,18 @@ class GOGService : Service() {
                         SnackbarManager.show("Download completed successfully!")
                         downloadInfo.setProgress(1.0f)
                         downloadInfo.setActive(false)
+                        storeDownloadTaskDao.delete(DownloadStore.GOG, gameId)
                     }
                 } catch (e: CancellationException) {
                     downloadInfo.setPostInstallSyncing(false)
                     downloadInfo.updateStatusMessage(null)
                     PluviaApp.events.emit(AndroidEvent.PostInstallSyncStatusChanged(gameId.toIntOrNull() ?: -1, false))
+                    storeDownloadTaskDao.updateState(
+                        DownloadStore.GOG,
+                        gameId,
+                        StoreDownloadState.PAUSED,
+                        System.currentTimeMillis(),
+                    )
                     throw e
                 } catch (e: Exception) {
                     Timber.e(e, "[Download] Exception for game $gameId")
@@ -421,12 +540,18 @@ class GOGService : Service() {
                     PluviaApp.events.emit(AndroidEvent.PostInstallSyncStatusChanged(gameId.toIntOrNull() ?: -1, false))
                     downloadInfo.setProgress(-1.0f)
                     downloadInfo.setActive(false)
+                    storeDownloadTaskDao.updateState(
+                        DownloadStore.GOG,
+                        gameId,
+                        StoreDownloadState.FAILED,
+                        System.currentTimeMillis(),
+                    )
 
                     SnackbarManager.show("Download error: ${e.message ?: "Unknown error"}")
                 } finally {
                     // Remove from activeDownloads for both success and failure
                     // so UI knows download is complete and to prevent stale entries
-                    instance.activeDownloads.remove(gameId)
+                    activeDownloads.remove(gameId)
                     Timber.d("[Download] Finished for game $gameId, progress: ${downloadInfo.getProgress()}, active: ${downloadInfo.isActive()}")
                 }
             }
@@ -707,10 +832,166 @@ class GOGService : Service() {
     @Inject
     lateinit var gogDownloadManager: GOGDownloadManager
 
+    @Inject
+    lateinit var gameLibraryRepository: GameLibraryRepository
+
+    @Inject
+    lateinit var storeDownloadTaskDao: StoreDownloadTaskDao
+
+    @Inject
+    lateinit var gogLibraryPathPolicy: GogLibraryPathPolicy
+
+    @Inject
+    lateinit var gogDownloadTaskPolicy: GogDownloadTaskPolicy
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Track active downloads by game ID
     private val activeDownloads = ConcurrentHashMap<String, DownloadInfo>()
+    private val legacyPartialMigrationMutex = Mutex()
+
+    /** Imports legacy marker-only partial installs exactly once into durable store tasks. */
+    private suspend fun importLegacyPartialDownloadsOnce() = legacyPartialMigrationMutex.withLock {
+        val preferences = getSharedPreferences("gog_library_migration", Context.MODE_PRIVATE)
+        if (preferences.getBoolean("partial_tasks_imported", false)) return@withLock
+
+        val legacyRoots = buildList {
+            add(GOGConstants.internalGOGGamesPath)
+            if (PrefManager.externalStoragePath.isNotBlank()) add(GOGConstants.externalGOGGamesPath)
+        }.distinct()
+        val partialPaths = legacyRoots
+            .flatMap(MarkerUtils::findResumablePartialInstalls)
+            .distinct()
+        var snapshot = gameLibraryRepository.getSnapshot()
+
+        val legacyExternalRoot = PrefManager.externalStoragePath.takeIf { it.isNotBlank() }
+            ?.let { GOGConstants.externalGOGGamesPath }
+        val externalPartials = legacyExternalRoot?.let { root ->
+            val canonicalRoot = File(root).canonicalFile.toPath()
+            partialPaths.filter {
+                File(it).canonicalFile.toPath().startsWith(canonicalRoot)
+            }
+        }.orEmpty()
+        if (externalPartials.isNotEmpty()) {
+            val externalRoot = File(requireNotNull(legacyExternalRoot)).parentFile?.parentFile
+                ?: throw IllegalStateException("Invalid legacy external GOG path")
+            if (snapshot.libraries.none { it.source == GameSource.GOG && it.rootPath == externalRoot.canonicalPath }) {
+                val previousDefault = snapshot.defaultLibraryIds.getValue(GameSource.GOG)
+                snapshot = gameLibraryRepository.addLibrary(GameSource.GOG, externalRoot.path)
+                gameLibraryRepository.setDefaultLibrary(GameSource.GOG, previousDefault)
+                snapshot = gameLibraryRepository.getSnapshot()
+            }
+        }
+
+        val games = gogManager.getNonInstalledGames()
+        val importedPaths = storeDownloadTaskDao.getAll()
+            .filter { it.store == DownloadStore.GOG }
+            .mapTo(mutableSetOf(), StoreDownloadTask::installPath)
+        for (game in games) {
+            if (storeDownloadTaskDao.find(DownloadStore.GOG, game.id) != null) continue
+            val matchingPaths = partialPaths.filter { candidate ->
+                File(candidate).name == GOGConstants.gameDirectoryName(game.title)
+            }
+            require(matchingPaths.size <= 1) {
+                "Multiple legacy GOG partials match ${game.id}: ${matchingPaths.joinToString()}"
+            }
+            val partialPath = matchingPaths.singleOrNull() ?: continue
+            val validatedPath = gogLibraryPathPolicy.validate(
+                snapshot.libraries.filter { it.source == GameSource.GOG },
+                null,
+                game.title,
+                partialPath,
+            )
+            val now = System.currentTimeMillis()
+            storeDownloadTaskDao.upsert(
+                StoreDownloadTask(
+                    store = DownloadStore.GOG,
+                    gameKey = game.id,
+                    appId = game.id.toIntOrNull()
+                        ?: throw IllegalArgumentException("GOG game id is not a 32-bit integer: ${game.id}"),
+                    libraryId = validatedPath.library.id,
+                    libraryRoot = validatedPath.library.rootPath,
+                    installPath = validatedPath.installPath,
+                    language = GOGConstants.GOG_FALLBACK_DOWNLOAD_LANGUAGE,
+                    state = StoreDownloadState.PAUSED,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
+            importedPaths += partialPath
+            Timber.i("Imported legacy GOG partial task ${game.id} at $partialPath")
+        }
+        require(importedPaths.containsAll(partialPaths)) {
+            "Some legacy GOG partial installs could not be matched to library games"
+        }
+        check(preferences.edit().putBoolean("partial_tasks_imported", true).commit()) {
+            "Failed to persist GOG partial-task migration state"
+        }
+    }
+
+    /** Resolves an exact path and persists the complete task before network or filesystem work. */
+    private suspend fun prepareDownload(
+        gameId: String,
+        requestedLibraryId: String?,
+        requestedInstallPath: String?,
+        language: String,
+    ): StoreDownloadTask {
+        taskRecoveryJob?.join()
+        require(activeDownloads[gameId]?.isActive() != true) { "GOG game $gameId is already downloading" }
+        val game = gogManager.getGameFromDbById(gameId)
+            ?: throw IllegalArgumentException("Unknown GOG game: $gameId")
+        val existingTask = storeDownloadTaskDao.find(DownloadStore.GOG, gameId)
+        val snapshot = gameLibraryRepository.getSnapshot()
+        val libraries = snapshot.libraries.filter { it.source == GameSource.GOG }
+
+        val exactPath = existingTask?.installPath
+            ?: game.installPath.takeIf { game.isInstalled && it.isNotBlank() }
+            ?: requestedInstallPath
+        val exactPathOwner = exactPath?.let { path ->
+            gogLibraryPathPolicy.validate(libraries, existingTask?.libraryRoot, game.title, path)
+        }
+        val selectedLibraryId = existingTask?.libraryId
+            ?: exactPathOwner?.library?.id
+            ?: requestedLibraryId
+            ?: snapshot.defaultLibraryIds.getValue(GameSource.GOG)
+        val installation = gameLibraryRepository.resolveInstallation(GameSource.GOG, selectedLibraryId)
+        if (existingTask != null) {
+            gogDownloadTaskPolicy.validate(existingTask, gameId, game.title, libraries, installation.library)
+        }
+        val candidatePath = exactPath ?: GOGConstants.getGameInstallPath(installation.installRoot, game.title)
+        val validatedPath = gogLibraryPathPolicy.validate(
+            libraries,
+            installation.library.rootPath,
+            game.title,
+            candidatePath,
+        )
+        require(validatedPath.library.id == installation.library.id) {
+            "GOG install path belongs to a different library"
+        }
+        val installPath = validatedPath.installPath
+        val now = System.currentTimeMillis()
+        val operation = existingTask?.operation ?: if (game.isInstalled) {
+            StoreDownloadOperation.UPDATE
+        } else {
+            StoreDownloadOperation.INSTALL
+        }
+        val task = StoreDownloadTask(
+            store = DownloadStore.GOG,
+            gameKey = gameId,
+            appId = gameId.toIntOrNull()
+                ?: throw IllegalArgumentException("GOG game id is not a 32-bit integer: $gameId"),
+            libraryId = installation.library.id,
+            libraryRoot = installation.library.rootPath,
+            installPath = installPath,
+            language = existingTask?.language ?: language,
+            operation = operation,
+            state = StoreDownloadState.PREPARING,
+            createdAt = existingTask?.createdAt ?: now,
+            updatedAt = now,
+        )
+        storeDownloadTaskDao.upsert(task)
+        return task
+    }
 
     private val onEndProcess: (AndroidEvent.EndProcess) -> Unit = { stop() }
 
@@ -718,6 +999,13 @@ class GOGService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        taskRecoveryJob = scope.launch {
+            val recovered = storeDownloadTaskDao.markInterruptedAsPaused(
+                DownloadStore.GOG,
+                System.currentTimeMillis(),
+            )
+            if (recovered > 0) Timber.tag("GOG").i("Recovered $recovered interrupted GOG task(s)")
+        }
 
         // Initialize notification helper for foreground service
         notificationHelper = NotificationHelper(applicationContext)
@@ -730,7 +1018,7 @@ class GOGService : Service() {
 
         // Start as foreground service
         val notification = notificationHelper.createServiceNotification(NotificationHelper.NOTIFICATION_ID_GOG, "Connected")
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NotificationHelper.NOTIFICATION_ID_GOG, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NotificationHelper.NOTIFICATION_ID_GOG, notification)
@@ -749,20 +1037,9 @@ class GOGService : Service() {
                 true
             }
 
-            null -> {
-                // Service restarted by Android with null intent (START_STICKY behavior)
-                // Only sync if we haven't done initial sync yet, or if it's been a while
-                val timeSinceLastSync = System.currentTimeMillis() - lastSyncTimestamp
-                val shouldResync = !hasPerformedInitialSync || timeSinceLastSync >= SYNC_THROTTLE_MILLIS
+            ACTION_DOWNLOAD_RECOVERY -> false
 
-                if (shouldResync) {
-                    Timber.i("[GOGService] Service restarted by Android - performing sync (hasPerformedInitialSync=$hasPerformedInitialSync, timeSinceLastSync=${timeSinceLastSync}ms)")
-                    true
-                } else {
-                    Timber.d("[GOGService] Service restarted by Android - skipping sync (throttled)")
-                    false
-                }
-            }
+            null -> false
 
             else -> {
                 // Service started without sync action (e.g., just to keep it alive)
@@ -780,7 +1057,9 @@ class GOGService : Service() {
                     setSyncInProgress(true)
                     Timber.d("[GOGService]: Starting background library sync")
 
-                    val syncResult = gogManager.startBackgroundSync(applicationContext)
+                    val syncResult = catalogSyncMutex.withLock {
+                        gogManager.startBackgroundSync(applicationContext)
+                    }
                     if (syncResult.isFailure) {
                         Timber.w("[GOGService]: Failed to start background sync: ${syncResult.exceptionOrNull()?.message}")
                     } else {

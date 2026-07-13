@@ -57,7 +57,7 @@ object AmazonApiClient {
                 target = GET_ENTITLEMENTS_TARGET,
                 bearerToken = bearerToken,
                 body = requestBody,
-            ) ?: break
+            ) ?: throw IllegalStateException("Amazon entitlements request failed")
 
             val entitlementsArray = responseJson.optJSONArray("entitlements")
             if (entitlementsArray != null) {

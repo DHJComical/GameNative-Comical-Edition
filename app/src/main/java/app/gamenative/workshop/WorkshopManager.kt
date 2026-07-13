@@ -2556,7 +2556,7 @@ object WorkshopManager {
         gameName: String = "",
         workshopModPath: String = "",
         compatibilityOverride: WorkshopCompatibilityOverride? = null,
-        bionicSteam: Boolean = PrefManager.launchBionicSteam,
+        bionicSteam: Boolean,
     ) {
         val appId = workshopContentDir.name.toIntOrNull() ?: -1
         val isSlayTheSpire = appId == SlayTheSpireModTheSpireCompatibility.APP_ID

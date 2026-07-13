@@ -104,7 +104,7 @@
     <string name="downloads_status_complete">Terminé</string>
     <string name="downloads_status_failed">Échec</string>
     <string name="downloads_status_paused">En pause</string>
-    <string name="downloads_summary">Gérez les téléchargements actifs et le stockage au même endroit</string>
+    <string name="downloads_summary">%1$d actifs • %2$d pouvant reprendre • %3$d terminés</string>
     <string name="storage_internal">Interne</string>
     <string name="storage_external">Externe</string>
     <string name="storage_free_of_total">%1$s : %2$s libre sur %3$s</string>
@@ -128,7 +128,7 @@
     <string name="container_storage_move_to_internal_button">Déplacer vers l’interne</string>
     <string name="container_storage_move_external_disabled">Définissez un chemin de stockage externe dans les paramètres avant de déplacer des jeux.</string>
     <string name="container_storage_move_success">%1$s déplacé vers %2$s</string>
-    <string name="container_storage_move_failed">Échec du déplacement du jeu : %1$s</string>
+    <string name="container_storage_move_failed">Échec du déplacement de %1$s : %2$s</string>
     <string name="container_storage_remove_button">Supprimer le conteneur</string>
     <string name="container_storage_remove_title">Supprimer le conteneur</string>
     <string name="container_storage_remove_message">Supprimer le conteneur de %1$s ? Les fichiers du jeu resteront sur le disque.</string>
@@ -740,14 +740,12 @@
     <string name="directinput_mapper_type">Type de mappeur DirectInput</string>
     <string name="disable_mouse_input">Désactiver l\'entrée souris</string>
     <string name="touchscreen_mode">Mode écran tactile</string>
-    <string name="touchscreen_mode_description">Pour les visual novels et jeux de stratégie en temps réel</string>
     <string name="shooter_mode_toggle">Mode tireur</string>
     <string name="shooter_mode_toggle_description">Remplacer les sticks par des joysticks dynamiques</string>
     <string name="shooter_mode_on">Activer la souris</string>
     <string name="shooter_mode_off">Activer les sticks</string>
 
     <!-- Gesture Settings Dialog -->
-    <string name="gesture_settings">Paramètres des gestes</string>
     <string name="gesture_settings_title">Paramètres des gestes tactiles</string>
     <string name="gesture_tap">Appui</string>
     <string name="gesture_tap_subtitle">Clic gauche</string>
@@ -967,8 +965,8 @@
     <string name="settings_info_title">Informations</string>
     <string name="settings_info_send_tip_title">Envoyer un pourboire</string>
     <string name="settings_info_send_tip_subtitle">Contribuer au développement continu</string>
-    <string name="settings_info_ask_tip_title">Demander un pourboire au démarrage</string>
-    <string name="settings_info_ask_tip_subtitle">Empêche le message de pourboire d\'apparaître</string>
+    <string name="settings_info_show_thank_you_dialog_title">Afficher la boîte de dialogue « Merci d\'utiliser GameNative »</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Afficher un message de soutien au démarrage de GameNative</string>
     <string name="settings_info_source_title">Code source</string>
     <string name="settings_info_source_subtitle">Voir le code source de ce projet</string>
     <string name="settings_info_libraries_title">Bibliothèques utilisées</string>
@@ -1254,6 +1252,8 @@
     <string name="action_refresh">Actualiser</string>
     <string name="action_details">Détails</string>
     <string name="action_add_game">Ajouter un jeu</string>
+    <string name="add_game_local_folder">Dossier local</string>
+    <string name="add_game_catalog_load_error">Impossible de charger cette bibliothèque de jeux.</string>
     <string name="action_system">Système</string>
 
     <!-- Search -->
@@ -1676,6 +1676,45 @@
     <string name="option_share_diagnostics">Partager le diagnostic</string>
     <string name="diagnostics_share_title">Partager le journal de diagnostic</string>
     <string name="diagnostics_share_none">Aucun journal de diagnostic. Utilisez d\'abord \"Exécution de diagnostic\".</string>
+    <string name="steam_install_library_label">Emplacement d’installation</string>
+    <string name="steam_library_built_in">Bibliothèque intégrée</string>
+    <string name="steam_library_custom">Bibliothèque Steam</string>
+    <string name="install_library_title">Emplacement d’installation</string>
+    <string name="install_library_built_in">Bibliothèque intégrée</string>
+    <string name="install_library_custom">Bibliothèque personnalisée</string>
+    <string name="install_library_space_summary">Requis : %1$s\nDisponible : %2$s</string>
+    <string name="game_libraries_title">Gestion des bibliothèques de jeux</string>
+    <string name="game_libraries_summary">Configurer les bibliothèques d’installation de chaque boutique</string>
+    <string name="game_libraries_open">Ouvrir la gestion des bibliothèques de jeux</string>
+    <string name="game_libraries_add">Ajouter une bibliothèque</string>
+    <string name="game_libraries_built_in">Bibliothèque intégrée</string>
+    <string name="game_libraries_custom">Bibliothèque personnalisée</string>
+    <string name="game_libraries_default">Par défaut</string>
+    <string name="game_libraries_set_default">Définir par défaut</string>
+    <string name="game_libraries_conflict">Conflit avec un ancien chemin : cette bibliothèque est uniquement disponible pour la détection. Migrez ses jeux avant de la supprimer.</string>
+    <string name="game_libraries_invalid_path">Le dossier sélectionné n’a pas pu être utilisé</string>
+    <string name="game_libraries_permission_denied">L’accès à tous les fichiers est requis pour ajouter des bibliothèques hors du stockage de l’application</string>
+    <string name="game_libraries_update_failed">Échec de la mise à jour de la bibliothèque de jeux</string>
+    <string name="game_libraries_toggle_games">Afficher ou masquer les jeux</string>
+    <string name="game_libraries_no_games">Aucun jeu installé ni téléchargement partiel dans cette bibliothèque</string>
+    <string name="game_libraries_game_details">%1$s\n%2$s</string>
+    <string name="game_libraries_migrate">Migrer le jeu</string>
+    <string name="game_libraries_migrate_title">Déplacer %1$s vers</string>
+    <string name="game_libraries_no_migration_target">Ajoutez une autre bibliothèque sans conflit pour cette boutique avant la migration.</string>
+    <string name="game_libraries_remove_title">Supprimer la bibliothèque</string>
+    <string name="game_libraries_remove_confirm">Supprimer les jeux et la bibliothèque</string>
+    <string name="game_libraries_remove_warning">Cette action supprime définitivement %1$d jeux installés et %2$d téléchargements partiels (environ %3$s), leurs conteneurs et toutes les sauvegardes locales qui y sont stockées. L’enregistrement de la bibliothèque ne sera supprimé qu’une fois toutes les suppressions réussies.</string>
+    <string name="game_libraries_remove_partial_failure">Certains jeux n’ont pas pu être supprimés. La bibliothèque reste enregistrée.</string>
+    <string name="game_libraries_failed_removals">Échec de la suppression pour : %1$s. La bibliothèque reste enregistrée ; réessayez après avoir résolu le problème.</string>
+    <string name="game_libraries_pending_cleanup">%1$d transaction(s) de bibliothèque interrompue(s) nécessitent encore un nettoyage. Leurs données sources ont été conservées. ID de transaction : %2$s</string>
+    <string name="install_library_permission_denied">L’accès à tous les fichiers n’a pas été accordé. Sélectionnez une bibliothèque accessible pour continuer.</string>
+    <string name="install_library_permission_revoked">L’accès à la bibliothèque sélectionnée a été révoqué. Sélectionnez une bibliothèque accessible pour continuer.</string>
+    <string name="game_libraries_operation_failed">Impossible de mettre à jour les bibliothèques de jeux : %1$s</string>
+    <string name="game_libraries_loading">Chargement des bibliothèques de jeux…</string>
+    <string name="store_steam">Steam</string>
+    <string name="store_gog">GOG</string>
+    <string name="store_epic_games">Epic Games</string>
+    <string name="store_amazon_games">Amazon Games</string>
 
     <string name="nexus_tab_import">Importer</string>
     <string name="nexus_tab_mods">Mods</string>

@@ -38,7 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -59,10 +59,35 @@ import app.gamenative.ui.theme.PluviaTheme
 import app.gamenative.ui.util.AdaptivePadding
 import app.gamenative.ui.util.WindowWidthClass
 import app.gamenative.ui.util.rememberWindowWidthClass
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.delay
 import timber.log.Timber
+
+internal fun shouldBlockLibraryInput(skeletonAlpha: Float): Boolean = skeletonAlpha > 0f
+
+@Composable
+internal fun LibraryInputBlocker(
+    alpha: Float,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    if (!shouldBlockLibraryInput(alpha)) return
+
+    Box(
+        modifier = modifier
+            .alpha(alpha)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                }
+            },
+    ) {
+        content()
+    }
+}
 
 /**
  * Calculates the installed games count based on the current filter state.
@@ -199,7 +224,6 @@ internal fun LibraryListPane(
                 .padding(paddingValues),
         ) {
             var shouldShowSkeletonOverlay by remember { mutableStateOf(true) }
-
             val skeletonAlpha by animateFloatAsState(
                 targetValue = if (shouldShowSkeletonOverlay) 1f else 0f,
                 animationSpec = tween(durationMillis = 300),
@@ -218,14 +242,20 @@ internal fun LibraryListPane(
                 }
             }
 
-            val totalSkeletonCount = remember(state.showSteamInLibrary, state.showCustomGamesInLibrary, state.showGOGInLibrary, state.showEpicInLibrary, state.showAmazonInLibrary) {
+            val totalSkeletonCount = remember(
+                state.showSteamInLibrary,
+                state.showCustomGamesInLibrary,
+                state.showGOGInLibrary,
+                state.showEpicInLibrary,
+                state.showAmazonInLibrary,
+            ) {
                 val customCount = if (state.showCustomGamesInLibrary) PrefManager.customGamesCount else 0
                 val steamCount = if (state.showSteamInLibrary) PrefManager.steamGamesCount else 0
-                val gogInstalledCount = if (state.showGOGInLibrary && GOGService.hasStoredCredentials(context)) PrefManager.gogInstalledGamesCount else 0
-                val epicInstalledCount = if (state.showEpicInLibrary && EpicService.hasStoredCredentials(context)) PrefManager.epicInstalledGamesCount else 0
-                val amazonInstalledCount = if (state.showAmazonInLibrary && AmazonService.hasStoredCredentials(context)) PrefManager.amazonInstalledGamesCount else 0
-                val total = customCount + steamCount + gogInstalledCount + epicInstalledCount + amazonInstalledCount
-                Timber.tag("LibraryListPane").d("Skeleton calculation - Custom: $customCount, Steam: $steamCount, GOG installed: $gogInstalledCount, Epic installed: $epicInstalledCount, Amazon installed: $amazonInstalledCount, Total: $total")
+                val gogCount = if (state.showGOGInLibrary && GOGService.hasStoredCredentials(context)) PrefManager.gogInstalledGamesCount else 0
+                val epicCount = if (state.showEpicInLibrary && EpicService.hasStoredCredentials(context)) PrefManager.epicInstalledGamesCount else 0
+                val amazonCount = if (state.showAmazonInLibrary && AmazonService.hasStoredCredentials(context)) PrefManager.amazonInstalledGamesCount else 0
+                val total = customCount + steamCount + gogCount + epicCount + amazonCount
+                Timber.tag("LibraryListPane").d("Skeleton item count: %s", total)
                 if (total == 0) 6 else minOf(total, 20)
             }
 
@@ -257,8 +287,8 @@ internal fun LibraryListPane(
                                 key = { listIndex -> state.appInfoList[listIndex].appId },
                             ) { listIndex ->
                                 val item = state.appInfoList[listIndex]
-                                val animateFade = remember(item.index) { !listState.isScrollInProgress }
-                                var isVisible by remember(item.index) { mutableStateOf(!animateFade) }
+                                val animateFade = remember(item.appId) { !listState.isScrollInProgress }
+                                var isVisible by remember(item.appId) { mutableStateOf(!animateFade) }
                                 val alpha by animateFloatAsState(
                                     targetValue = if (isVisible) 1f else 0f,
                                     animationSpec = spring(
@@ -269,8 +299,8 @@ internal fun LibraryListPane(
                                 )
 
                                 if (animateFade) {
-                                    LaunchedEffect(item.index) {
-                                        delay((item.index % 8) * 30L)
+                                    LaunchedEffect(item.appId) {
+                                        delay((listIndex % 8) * 30L)
                                         isVisible = true
                                     }
                                 }
@@ -293,7 +323,7 @@ internal fun LibraryListPane(
                                         appInfo = item,
                                         onClick = { onNavigate(item.appId) },
                                         paneType = currentLayout,
-                                        onFocus = { targetOfScroll = item.index },
+                                        onFocus = { targetOfScroll = listIndex },
                                         imageRefreshCounter = state.imageRefreshCounter,
                                         compatibilityStatus = state.compatibilityMap[item.name],
                                         gameStats = state.statsFor(item),
@@ -318,33 +348,25 @@ internal fun LibraryListPane(
             }
 
             val skeletonListState = remember { LazyGridState() }
-            if (skeletonAlpha > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(skeletonAlpha)
-                        .pointerInteropFilter { false },
+            LibraryInputBlocker(
+                alpha = skeletonAlpha,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                LazyVerticalGrid(
+                    columns = columnType,
+                    state = skeletonListState,
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                    contentPadding = PaddingValues(
+                        top = 80.dp,
+                        start = horizontalPadding,
+                        end = horizontalPadding,
+                        bottom = 72.dp,
+                    ),
                 ) {
-                    LazyVerticalGrid(
-                        columns = columnType,
-                        state = skeletonListState,
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-                        contentPadding = PaddingValues(
-                            top = 80.dp,
-                            start = horizontalPadding,
-                            end = horizontalPadding,
-                            bottom = 72.dp,
-                        ),
-                    ) {
-                        items(totalSkeletonCount) { index ->
-                            if (index > 0 && currentLayout == PaneType.LIST) {
-                                HorizontalDivider()
-                            }
-                            GameSkeletonLoader(
-                                paneType = currentLayout,
-                            )
-                        }
+                    items(totalSkeletonCount) { index ->
+                        if (index > 0 && currentLayout == PaneType.LIST) HorizontalDivider()
+                        GameSkeletonLoader(paneType = currentLayout)
                     }
                 }
             }

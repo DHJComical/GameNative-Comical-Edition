@@ -2,62 +2,48 @@ package app.gamenative.ui.screen.library.components
 
 import android.view.KeyEvent
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.gamenative.BuildConfig
 import app.gamenative.R
+import app.gamenative.ui.component.AppTabDensity
+import app.gamenative.ui.component.AppTabDimensions
+import app.gamenative.ui.component.AppTabItem
+import app.gamenative.ui.component.AppTabLayout
+import app.gamenative.ui.component.AppTabRow
 import app.gamenative.ui.component.focusRing
 import app.gamenative.ui.enums.LibraryTab
 import app.gamenative.ui.theme.PluviaTheme
@@ -76,6 +62,7 @@ fun LibraryTabBar(
     onOptionsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onAddGameClick: () -> Unit,
+    showAddGameButton: Boolean = true,
     onMenuClick: () -> Unit,
     onNavigateDownToGrid: () -> Unit,
     onPreviousTab: () -> Unit = {},
@@ -92,6 +79,7 @@ fun LibraryTabBar(
             onOptionsClick = onOptionsClick,
             onSearchClick = onSearchClick,
             onAddGameClick = onAddGameClick,
+            showAddGameButton = showAddGameButton,
             onMenuClick = onMenuClick,
             onNavigateDownToGrid = onNavigateDownToGrid,
             onPreviousTab = onPreviousTab,
@@ -106,6 +94,7 @@ fun LibraryTabBar(
             onOptionsClick = onOptionsClick,
             onSearchClick = onSearchClick,
             onAddGameClick = onAddGameClick,
+            showAddGameButton = showAddGameButton,
             onMenuClick = onMenuClick,
             onNavigateDownToGrid = onNavigateDownToGrid,
             onPreviousTab = onPreviousTab,
@@ -127,6 +116,7 @@ private fun CompactLibraryTabBar(
     onOptionsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onAddGameClick: () -> Unit,
+    showAddGameButton: Boolean,
     onMenuClick: () -> Unit,
     onNavigateDownToGrid: () -> Unit,
     onPreviousTab: () -> Unit,
@@ -134,17 +124,8 @@ private fun CompactLibraryTabBar(
     modifier: Modifier = Modifier,
 ) {
     val tabs = LibraryTab.visibleEntries
-    val currentIndex = tabs.indexOf(currentTab)
-    val scrollState = rememberScrollState()
-    val tabPositions = remember { mutableStateMapOf<Int, Float>() }
-    val tabWidths = remember { mutableStateMapOf<Int, Float>() }
-
-    LaunchedEffect(currentTab) {
-        val pos = tabPositions[currentIndex] ?: return@LaunchedEffect
-        val width = tabWidths[currentIndex] ?: return@LaunchedEffect
-        val targetCenter = (pos + width / 2).toInt()
-        val viewportCenter = scrollState.viewportSize / 2
-        scrollState.animateScrollTo((targetCenter - viewportCenter).coerceAtLeast(0))
+    val items = tabs.map { tab ->
+        AppTabItem(tab, libraryTabLabel(tab, tabCounts[tab]))
     }
 
     Box(
@@ -195,72 +176,22 @@ private fun CompactLibraryTabBar(
                 onClick = onOptionsClick,
             )
 
-            Row(
+            AppTabRow(
+                items = items,
+                selectedKey = currentTab,
+                onTabSelected = onTabSelected,
                 modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    .horizontalScroll(scrollState)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    val isSelected = tab == currentTab
-                    val tabInteractionSource = remember { MutableInteractionSource() }
-                    val isTabFocused by tabInteractionSource.collectIsFocusedAsState()
-                    Box(
-                        modifier = Modifier
-                            .onGloballyPositioned { coordinates ->
-                                tabPositions[index] = coordinates.positionInParent().x
-                                tabWidths[index] = coordinates.size.width.toFloat()
-                            }
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                when {
-                                    isSelected -> MaterialTheme.colorScheme.primary
-                                    isTabFocused -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                    else -> Color.Transparent
-                                },
-                            )
-                            .focusRing(tabInteractionSource, RoundedCornerShape(16.dp), width = 2.dp)
-                            .selectable(
-                                selected = isSelected,
-                                interactionSource = tabInteractionSource,
-                                indication = null,
-                                onClick = { onTabSelected(tab) },
-                            )
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        val count = tabCounts[tab]
-                        val label = if (count != null && count > 0) {
-                            stringResource(R.string.library_tab_with_count, stringResource(tab.labelResId), count)
-                        } else {
-                            stringResource(tab.labelResId)
-                        }
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = when {
-                                isSelected -> MaterialTheme.colorScheme.onPrimary
-                                isTabFocused -> MaterialTheme.colorScheme.primary
-                                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            },
-                        )
-                    }
-                }
-            }
+                    .weight(1f, fill = false),
+                density = AppTabDensity.Compact,
+                layout = AppTabLayout.Scrollable,
+            )
 
             CompactIconButton(
                 icon = Icons.Default.Search,
                 contentDescription = stringResource(R.string.search),
                 onClick = onSearchClick,
             )
-            if (!BuildConfig.MODERN_ANDROID) {
+            if (showAddGameButton && !BuildConfig.MODERN_ANDROID) {
                 CompactIconButton(
                     icon = Icons.Default.Add,
                     contentDescription = stringResource(R.string.action_add_game),
@@ -291,7 +222,7 @@ private fun CompactIconButton(
 
     Box(
         modifier = modifier
-            .size(36.dp)
+            .size(AppTabDimensions.COMPACT_TRACK_HEIGHT)
             .clip(CircleShape)
             .background(
                 if (isFocused) {
@@ -333,6 +264,7 @@ private fun ExpandedLibraryTabBar(
     onOptionsClick: () -> Unit,
     onSearchClick: () -> Unit,
     onAddGameClick: () -> Unit,
+    showAddGameButton: Boolean,
     onMenuClick: () -> Unit,
     onNavigateDownToGrid: () -> Unit,
     onPreviousTab: () -> Unit,
@@ -340,38 +272,8 @@ private fun ExpandedLibraryTabBar(
     modifier: Modifier = Modifier,
 ) {
     val tabs = LibraryTab.visibleEntries
-    val currentIndex = tabs.indexOf(currentTab)
-    val scrollState = rememberScrollState()
-
-    val tabPositions = remember { mutableStateMapOf<Int, Float>() }
-    val tabWidths = remember { mutableStateMapOf<Int, Float>() }
-
-    val density = LocalDensity.current
-
-    val indicatorOffset by animateDpAsState(
-        targetValue = with(density) { (tabPositions[currentIndex] ?: 0f).toDp() },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "indicatorOffset",
-    )
-
-    val indicatorWidth by animateDpAsState(
-        targetValue = with(density) { (tabWidths[currentIndex] ?: 80f).toDp() },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "indicatorWidth",
-    )
-
-    LaunchedEffect(currentTab) {
-        val pos = tabPositions[currentIndex] ?: return@LaunchedEffect
-        val width = tabWidths[currentIndex] ?: return@LaunchedEffect
-        val targetCenter = (pos + width / 2).toInt()
-        val viewportCenter = scrollState.viewportSize / 2
-        scrollState.animateScrollTo((targetCenter - viewportCenter).coerceAtLeast(0))
+    val items = tabs.map { tab ->
+        AppTabItem(tab, libraryTabLabel(tab, tabCounts[tab]))
     }
 
     Box(
@@ -422,58 +324,15 @@ private fun ExpandedLibraryTabBar(
                 onClick = onOptionsClick,
             )
 
-            Box(
+            AppTabRow(
+                items = items,
+                selectedKey = currentTab,
+                onTabSelected = onTabSelected,
                 modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            ),
-                        ),
-                    )
-                    .horizontalScroll(scrollState)
-                    .padding(4.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                // Sliding pill indicator (rendered behind tabs)
-                Box(
-                    modifier = Modifier
-                        .offset { IntOffset(indicatorOffset.roundToPx(), 0) }
-                        .width(indicatorWidth)
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.9f),
-                                ),
-                            ),
-                        ),
-                )
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    tabs.forEachIndexed { index, tab ->
-                        TabItem(
-                            tab = tab,
-                            count = tabCounts[tab],
-                            isSelected = tab == currentTab,
-                            onClick = { onTabSelected(tab) },
-                            onPositioned = { position, width ->
-                                tabPositions[index] = position
-                                tabWidths[index] = width
-                            },
-                        )
-                    }
-                }
-            }
+                    .weight(1f, fill = false),
+                density = AppTabDensity.Standard,
+                layout = AppTabLayout.Scrollable,
+            )
 
             IconActionButton(
                 icon = Icons.Default.Search,
@@ -481,7 +340,7 @@ private fun ExpandedLibraryTabBar(
                 onClick = onSearchClick,
             )
 
-            if (!BuildConfig.MODERN_ANDROID) {
+            if (showAddGameButton && !BuildConfig.MODERN_ANDROID) {
                 IconActionButton(
                     icon = Icons.Default.Add,
                     contentDescription = stringResource(R.string.action_add_game),
@@ -534,7 +393,7 @@ private fun IconActionButton(
                 scaleY = scale
                 this.alpha = alpha
             }
-            .size(44.dp)
+            .size(AppTabDimensions.STANDARD_TRACK_HEIGHT)
             .clip(CircleShape)
             .background(
                 brush = Brush.radialGradient(
@@ -576,70 +435,12 @@ private fun IconActionButton(
 }
 
 @Composable
-private fun TabItem(
-    tab: LibraryTab,
-    count: Int?,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    onPositioned: (Float, Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    val textAlpha by animateFloatAsState(
-        targetValue = when {
-            isSelected -> 1f
-            isFocused -> 0.9f
-            else -> 0.6f
-        },
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "textAlpha",
-    )
-
-    val label = if (count != null && count > 0) {
+private fun libraryTabLabel(tab: LibraryTab, count: Int?): String =
+    if (count != null && count > 0) {
         stringResource(R.string.library_tab_with_count, stringResource(tab.labelResId), count)
     } else {
         stringResource(tab.labelResId)
     }
-
-    Box(
-        modifier = modifier
-            // Min height = the sliding pill's height (40.dp) so the focus ring outlines the same
-            // 40dp-tall, 20dp-radius capsule the user sees. Uses heightIn (not a fixed height) so the
-            // label can grow at large accessibility font scales instead of being clipped.
-            .heightIn(min = 40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .focusRing(interactionSource, RoundedCornerShape(20.dp), width = 2.dp)
-            .onGloballyPositioned { coordinates ->
-                onPositioned(
-                    coordinates.positionInParent().x,
-                    coordinates.size.width.toFloat(),
-                )
-            }
-            .selectable(
-                selected = isSelected,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 20.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = when {
-                isSelected -> MaterialTheme.colorScheme.onPrimary
-                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = textAlpha)
-            },
-            textAlign = TextAlign.Center,
-        )
-    }
-}
 
 @Preview(showBackground = true, backgroundColor = 0xFF1A1A1A)
 @Composable

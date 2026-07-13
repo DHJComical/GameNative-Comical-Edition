@@ -1050,8 +1050,8 @@
     <string name="settings_info_title">Info</string>
     <string name="settings_info_send_tip_title">Send tip</string>
     <string name="settings_info_send_tip_subtitle">Contribute to ongoing development</string>
-    <string name="settings_info_ask_tip_title">Ask for tip on startup</string>
-    <string name="settings_info_ask_tip_subtitle">Stops the tip message from appearing</string>
+    <string name="settings_info_show_thank_you_dialog_title">Show the "Thank you for using GameNative" dialog</string>
+    <string name="settings_info_show_thank_you_dialog_subtitle">Show a support message when GameNative starts</string>
     <string name="settings_info_source_title">Source code</string>
     <string name="settings_info_source_subtitle">View the source code of this project</string>
     <string name="settings_info_libraries_title">Libraries Used</string>
@@ -1102,6 +1102,45 @@
     <string name="settings_storage_title">Storage</string>
     <string name="settings_storage_manage_title">Storage Manager</string>
     <string name="settings_storage_manage_subtitle">Review game and container storage in one place</string>
+    <string name="steam_library_built_in">Built-in library</string>
+    <string name="steam_library_custom">Steam library</string>
+    <string name="install_library_title">Install location</string>
+    <string name="install_library_built_in">Built-in library</string>
+    <string name="install_library_custom">Custom library</string>
+    <string name="install_library_space_summary">Required: %1$s\nAvailable: %2$s</string>
+    <string name="game_libraries_title">Game library management</string>
+    <string name="game_libraries_summary">Configure installation libraries for every store</string>
+    <string name="game_libraries_open">Open game library management</string>
+    <string name="game_libraries_add">Add library</string>
+    <string name="game_libraries_built_in">Built-in library</string>
+    <string name="game_libraries_custom">Custom library</string>
+    <string name="game_libraries_default">Default</string>
+    <string name="game_libraries_set_default">Set default</string>
+    <string name="game_libraries_conflict">Legacy path conflict: this library is available for discovery only. Migrate its games before removing it.</string>
+    <string name="game_libraries_invalid_path">The selected directory could not be used</string>
+    <string name="game_libraries_permission_denied">All files access is required to add libraries outside app storage</string>
+    <string name="game_libraries_update_failed">Game library update failed</string>
+    <string name="game_libraries_toggle_games">Show or hide games</string>
+    <string name="game_libraries_no_games">No installed games or partial downloads in this library</string>
+    <string name="game_libraries_game_details">%1$s\n%2$s</string>
+    <string name="game_libraries_migrate">Migrate game</string>
+    <string name="game_libraries_migrate_title">Move %1$s to</string>
+    <string name="game_libraries_no_migration_target">Add another conflict-free library for this store before migrating.</string>
+    <string name="game_libraries_remove_title">Remove library</string>
+    <string name="game_libraries_remove_confirm">Delete games and remove library</string>
+    <string name="game_libraries_remove_warning">This permanently deletes %1$d installed games and %2$d partial downloads (about %3$s), their containers, and any local saves stored in those containers. The library registration is removed only after every deletion succeeds.</string>
+    <string name="game_libraries_remove_partial_failure">Some games could not be deleted. The library remains registered.</string>
+    <string name="game_libraries_failed_removals">Removal failed for: %1$s. The library remains registered; retry after resolving the problem.</string>
+    <string name="game_libraries_pending_cleanup">%1$d interrupted library transaction(s) still require cleanup. Their source data has been preserved. Transaction IDs: %2$s</string>
+    <string name="install_library_permission_denied">All files access was not granted. Select an accessible library to continue.</string>
+    <string name="install_library_permission_revoked">Access to the selected library was revoked. Select an accessible library to continue.</string>
+    <string name="game_libraries_operation_failed">Could not update game libraries: %1$s</string>
+    <string name="game_libraries_loading">Loading game libraries…</string>
+    <string name="store_steam">Steam</string>
+    <string name="store_gog">GOG</string>
+    <string name="store_epic_games">Epic Games</string>
+    <string name="store_amazon_games">Amazon Games</string>
+    <string name="steam_install_library_label">Install location</string>
     <string name="storage_internal">Internal</string>
     <string name="storage_external">External</string>
     <string name="storage_free_of_total">%1$s: %2$s free of %3$s</string>
@@ -1418,6 +1457,8 @@
     <string name="action_refresh">Refresh</string>
     <string name="action_details">Details</string>
     <string name="action_add_game">Add Game</string>
+    <string name="add_game_local_folder">Local folder</string>
+    <string name="add_game_catalog_load_error">Could not load this game library.</string>
     <string name="action_system">System</string>
 
     <!-- Search -->
@@ -2049,5 +2090,5 @@
     <string name="game_launch_tip_22">Tip: You can enable touchscreen mode.</string>
     <string name="game_launch_tip_23">Tip: If you have a Mali GPU, please use System Drivers.</string>
     <string name="game_launch_tip_24">Tip: Getting a blank screen? Try using the \"%s\" option in the menu to check if your drivers are working correctly.</string>
-    <string name="game_launch_tip_25">Tip: Use Proton x86-64 if you can\'t click the mouse in games.</string>
+    <string name="game_launch_tip_25">Tip: Use Proton x86–64 if you can\'t click the mouse in games.</string>
 </resources>

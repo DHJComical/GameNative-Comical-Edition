@@ -6,11 +6,16 @@ import app.gamenative.data.GOGCloudSavesLocation
 import app.gamenative.data.GOGCloudSavesLocationTemplate
 import app.gamenative.data.GOGGame
 import app.gamenative.data.GameSource
+import app.gamenative.data.DownloadStore
 import app.gamenative.data.LaunchInfo
 import app.gamenative.data.LibraryItem
+import app.gamenative.data.library.GameLibraryRepository
+import app.gamenative.data.library.GogLibraryLayout
 import app.gamenative.db.dao.GOGGameDao
+import app.gamenative.db.dao.StoreDownloadTaskDao
 import app.gamenative.enums.Marker
 import app.gamenative.enums.PathType
+import app.gamenative.events.AndroidEvent
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.FileUtils
 import app.gamenative.utils.MarkerUtils
@@ -57,6 +62,10 @@ data class GameSizeInfo(
 @Singleton
 class GOGManager @Inject constructor(
     private val gogGameDao: GOGGameDao,
+    private val gameLibraryRepository: GameLibraryRepository,
+    private val storeDownloadTaskDao: StoreDownloadTaskDao,
+    private val gogLibraryPathPolicy: GogLibraryPathPolicy,
+    private val gogUninstallFiles: GogUninstallFiles,
     @ApplicationContext private val context: Context,
 ) {
 
@@ -330,11 +339,10 @@ class GOGManager @Inject constructor(
         var detectedCount = 0
 
         try {
-            // Check both internal and external storage paths
-            val pathsToCheck = listOf(
-                GOGConstants.internalGOGGamesPath,
-                GOGConstants.externalGOGGamesPath,
-            )
+            val pathsToCheck = gameLibraryRepository.getSnapshot().libraries
+                .filter { it.source == GameSource.GOG }
+                .map { GogLibraryLayout.installRoot(it.rootPath) }
+                .distinct()
 
             for (basePath in pathsToCheck) {
                 val baseDir = File(basePath)
@@ -352,7 +360,11 @@ class GOGManager @Inject constructor(
                         if (detectedGame != null) {
                             // Update database with installation info
                             val existingGame = getGameFromDbById(detectedGame.id)
-                            if (existingGame != null && !existingGame.isInstalled) {
+                            val existingPathIsValid = existingGame?.installPath
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { File(it).isDirectory }
+                                ?: false
+                            if (existingGame != null && (!existingGame.isInstalled || !existingPathIsValid)) {
                                 val updatedGame = existingGame.copy(
                                     isInstalled = true,
                                     installPath = detectedGame.installPath,
@@ -485,51 +497,49 @@ class GOGManager @Inject constructor(
                 val gameId = libraryItem.gameId.toString()
 
                 val game = getGameFromDbById(gameId)
-                val storedPath = game?.installPath?.takeIf { it.isNotBlank() }
-                val computedPath = getGameInstallPath(gameId, libraryItem.name)
-                val pathsToClean = listOfNotNull(storedPath, computedPath).distinct()
-
+                    ?: return@withContext Result.failure(Exception("GOG game $gameId is not in the database"))
+                val storedPath = game.installPath.takeIf { it.isNotBlank() }
+                    ?: return@withContext Result.failure(Exception("GOG game $gameId has no recorded install path"))
+                val libraries = gameLibraryRepository.getSnapshot().libraries
+                    .filter { it.source == GameSource.GOG }
+                val validatedPath = gogLibraryPathPolicy.validate(
+                    libraries,
+                    null,
+                    game.title,
+                    storedPath,
+                )
+                val installation = gameLibraryRepository.resolveInstallation(
+                    GameSource.GOG,
+                    validatedPath.library.id,
+                )
+                require(installation.library == validatedPath.library) {
+                    "Validated GOG library changed before uninstall"
+                }
+                val path = validatedPath.installPath
+                val dir = File(path)
                 val manifestPath = File(context.filesDir, "manifests/$gameId")
-                if (manifestPath.exists()) {
-                    manifestPath.delete()
-                    Timber.i("Deleted manifest file for game $gameId")
+                val deletion = gogUninstallFiles.delete(dir, manifestPath)
+                if (deletion.isFailure) {
+                    val error = deletion.exceptionOrNull()
+                        ?: IllegalStateException("Unknown GOG uninstall failure")
+                    Timber.e(error, "GOG files were not fully deleted; preserving database and task for $gameId")
+                    return@withContext Result.failure(error)
                 }
+                Timber.i("Successfully deleted GOG game directory and manifest for $gameId")
+                MarkerUtils.removeMarker(path, Marker.DOWNLOAD_COMPLETE_MARKER)
+                MarkerUtils.removeMarker(path, Marker.DOWNLOAD_IN_PROGRESS_MARKER)
 
-                val failedPaths = mutableListOf<String>()
-                for (path in pathsToClean) {
-                    val dir = File(path)
-                    if (dir.exists()) {
-                        if (dir.deleteRecursively()) {
-                            Timber.i("Successfully deleted game directory: $path")
-                        } else {
-                            Timber.w("Failed to delete some game files at $path")
-                            failedPaths.add(path)
-                        }
-                    } else {
-                        Timber.w("GOG game directory doesn't exist: $path")
-                    }
-                    MarkerUtils.removeMarker(path, Marker.DOWNLOAD_COMPLETE_MARKER)
-                    MarkerUtils.removeMarker(path, Marker.DOWNLOAD_IN_PROGRESS_MARKER)
-                }
-
-                if (game != null) {
-                    val updatedGame = game.copy(isInstalled = false, installPath = "")
-                    gogGameDao.update(updatedGame)
-                    Timber.d("Updated database: game marked as not installed")
-                }
+                gogGameDao.update(game.copy(isInstalled = false, installPath = ""))
+                storeDownloadTaskDao.delete(DownloadStore.GOG, gameId)
+                Timber.d("Updated database: game marked as not installed")
 
                 withContext(Dispatchers.Main) {
                     ContainerUtils.deleteContainer(context, libraryItem.appId)
                 }
 
-                // Trigger library refresh event
-                app.gamenative.PluviaApp.events.emitJava(
-                    app.gamenative.events.AndroidEvent.LibraryInstallStatusChanged(libraryItem.gameId, app.gamenative.data.GameSource.GOG),
+                PluviaApp.events.emitJava(
+                    AndroidEvent.LibraryInstallStatusChanged(libraryItem.gameId, GameSource.GOG),
                 )
-
-                if (failedPaths.isNotEmpty()) {
-                    return@withContext Result.failure(Exception("Failed to fully delete at: ${failedPaths.joinToString()}"))
-                }
 
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -553,7 +563,7 @@ class GOGManager @Inject constructor(
             val gameId = libraryItem.gameId.toString()
             val game = runBlocking { getGameFromDbById(gameId) }
             if (game != null && isInstalled != game.isInstalled) {
-                val installPath = if (isInstalled) getGameInstallPath(gameId, libraryItem.name) else ""
+                val installPath = if (isInstalled) appDirPath else ""
                 val updatedGame = game.copy(isInstalled = isInstalled, installPath = installPath)
                 runBlocking { gogGameDao.update(updatedGame) }
             }
@@ -596,7 +606,8 @@ class GOGManager @Inject constructor(
         val gameId = libraryItem.gameId.toString()
         try {
             val game = getGameFromDbById(gameId) ?: return@withContext ""
-            val installPath = getGameInstallPath(game.id, game.title)
+            val installPath = game.installPath.takeIf { it.isNotBlank() }
+                ?: getGameInstallPath(game.id, game.title)
 
             // Try V2 structure first (game_$gameId subdirectory)
             val v2GameDir = File(installPath, "game_$gameId")
@@ -1260,18 +1271,37 @@ class GOGManager @Inject constructor(
 
     fun getAppDirPath(appId: String): String {
         val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
-        val game = runBlocking { getGameFromDbById(gameId.toString()) }
+        val gameIdString = gameId.toString()
+        val game = runBlocking { getGameFromDbById(gameIdString) }
 
         if (game != null) {
             if (game.installPath.isNotBlank()) return game.installPath
-            return GOGConstants.getGameInstallPath(game.title)
+            val taskPath = runBlocking {
+                storeDownloadTaskDao.find(DownloadStore.GOG, gameIdString)?.installPath
+            }
+            if (taskPath != null) return taskPath
+            return runBlocking {
+                val snapshot = gameLibraryRepository.getSnapshot()
+                val defaultId = snapshot.defaultLibraryIds.getValue(GameSource.GOG)
+                val installation = gameLibraryRepository.resolveInstallation(GameSource.GOG, defaultId)
+                GOGConstants.getGameInstallPath(installation.installRoot, game.title)
+            }
         }
 
         Timber.w("Could not find game for appId $appId")
-        return GOGConstants.defaultGOGGamesPath
+        return GOGConstants.internalGOGGamesPath
     }
 
     fun getGameInstallPath(gameId: String, gameTitle: String): String {
-        return GOGConstants.getGameInstallPath(gameTitle)
+        val storedPath = runBlocking {
+            getGameFromDbById(gameId)?.installPath?.takeIf { it.isNotBlank() }
+                ?: storeDownloadTaskDao.find(DownloadStore.GOG, gameId)?.installPath
+        }
+        return storedPath ?: runBlocking {
+            val snapshot = gameLibraryRepository.getSnapshot()
+            val defaultId = snapshot.defaultLibraryIds.getValue(GameSource.GOG)
+            val installation = gameLibraryRepository.resolveInstallation(GameSource.GOG, defaultId)
+            GOGConstants.getGameInstallPath(installation.installRoot, gameTitle)
+        }
     }
 }

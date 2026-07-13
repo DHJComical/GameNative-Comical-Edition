@@ -29,8 +29,7 @@ object PlatformOAuthHandlers {
 
             if (result.isSuccess) {
                 Timber.i("[PlatformOAuth]: GOG authentication successful!")
-                GOGService.start(context)
-                GOGService.triggerLibrarySync(context)
+                GOGService.startForDownloadRecovery(context)
                 onSuccess(0)
                 onLoadingChange(false)
                 onDialogClose()
@@ -65,8 +64,7 @@ object PlatformOAuthHandlers {
 
             if (result.isSuccess) {
                 Timber.i("[PlatformOAuth]: Epic authentication successful!")
-                EpicService.start(context)
-                EpicService.triggerLibrarySync(context)
+                EpicService.startForDownloadRecovery(context)
                 onSuccess()
                 onLoadingChange(false)
                 onDialogClose()
@@ -101,8 +99,7 @@ object PlatformOAuthHandlers {
 
             if (result.isSuccess) {
                 Timber.i("[PlatformOAuth]: Amazon authentication successful!")
-                AmazonService.start(context)
-                AmazonService.triggerLibrarySync(context)
+                AmazonService.startForDownloadRecovery(context)
                 onSuccess()
                 onLoadingChange(false)
                 onDialogClose()

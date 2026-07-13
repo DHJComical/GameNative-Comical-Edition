@@ -64,6 +64,12 @@ class MainViewModel @Inject constructor(
 
     companion object {
         private const val KEY_CURRENT_SCREEN_ROUTE = "current_screen_route"
+
+        internal fun requiresLoginNavigation(reason: SteamEvent.LogoutReason): Boolean =
+            reason.requiresReauthentication
+
+        internal fun loggedInAfterDisconnect(currentlyLoggedIn: Boolean, isTerminal: Boolean): Boolean =
+            currentlyLoggedIn && !isTerminal
     }
 
     sealed class MainUiEvent {
@@ -113,6 +119,7 @@ class MainViewModel @Inject constructor(
         _state.update {
             it.copy(
                 isSteamConnected = false,
+                isSteamLoggedIn = loggedInAfterDisconnect(it.isSteamLoggedIn, event.isTerminal),
                 connectionState = if (it.connectionState != ConnectionState.OFFLINE_MODE) {
                     ConnectionState.DISCONNECTED
                 } else {
@@ -166,6 +173,7 @@ class MainViewModel @Inject constructor(
             LoginResult.Success -> {
                 _state.update {
                     it.copy(
+                        isSteamLoggedIn = true,
                         connectionMessage = null,
                         connectionTimeoutSeconds = 0,
                     )
@@ -186,17 +194,24 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private val onLoggedOut: (SteamEvent.LoggedOut) -> Unit = {
-        Timber.tag("MainViewModel").i("Received logged out")
-        viewModelScope.launch {
-            _uiEvent.send(MainUiEvent.OnLoggedOut)
+    private val onLoggedOut: (SteamEvent.LoggedOut) -> Unit = { event ->
+        val requiresLogin = requiresLoginNavigation(event.reason)
+        Timber.tag("MainViewModel").i(
+            "Received logged out (reason=%s, requiresLogin=%s)",
+            event.reason,
+            requiresLogin,
+        )
+        if (requiresLogin) {
+            viewModelScope.launch {
+                _uiEvent.send(MainUiEvent.OnLoggedOut)
+            }
         }
-        // Session expired or user logged out - must re-authenticate
         _state.update {
             it.copy(
-                connectionState = ConnectionState.LOGGED_OUT,
+                connectionState = if (requiresLogin) ConnectionState.LOGGED_OUT else ConnectionState.DISCONNECTED,
                 connectionMessage = null,
                 isSteamConnected = false,
+                isSteamLoggedIn = false,
             )
         }
     }
@@ -243,6 +258,7 @@ class MainViewModel @Inject constructor(
         _state.update {
             it.copy(
                 isSteamConnected = SteamService.isConnected,
+                isSteamLoggedIn = SteamService.isLoggedIn,
                 hasCrashedLastStart = PrefManager.recentlyCrashed,
                 launchedAppId = "",
                 currentScreen = restoredScreen,

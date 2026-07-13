@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import app.gamenative.data.AppInfo
 import app.gamenative.data.DepotInfo
 
@@ -17,6 +18,10 @@ interface AppInfoDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(appInfos: List<AppInfo>)
 
+    /** Atomically inserts new installation rows or replaces matching rows during reconciliation. */
+    @Upsert
+    suspend fun upsertAll(appInfos: List<AppInfo>)
+
     @Update
     suspend fun update(appInfo: AppInfo)
 
@@ -25,6 +30,10 @@ interface AppInfoDao {
 
     @Query("SELECT * FROM app_info")
     suspend fun getAll(): List<AppInfo>
+
+    /** Loads existing installation state for the requested catalog identifiers in one query. */
+    @Query("SELECT * FROM app_info WHERE id IN (:appIds)")
+    suspend fun getByIds(appIds: List<Int>): List<AppInfo>
 
     @Query("SELECT * FROM app_info WHERE id = :appId")
     suspend fun get(appId: Int): AppInfo?

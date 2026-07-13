@@ -1247,7 +1247,11 @@ fun GameMigrationDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    text = stringResource(R.string.library_file_count, movedFiles + 1, totalFiles),
+                    text = stringResource(
+                        R.string.library_file_count,
+                        movedFiles.coerceAtMost(totalFiles),
+                        totalFiles,
+                    ),
                     style = MaterialTheme.typography.bodyLarge,
                 )
 

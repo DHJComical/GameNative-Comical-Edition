@@ -677,7 +677,7 @@ class SteamAppScreen : BaseAppScreen() {
     }
 
     override fun supportsSaveTransfer(libraryItem: LibraryItem): Boolean {
-        return libraryItem.gameSource == app.gamenative.data.GameSource.STEAM
+        return libraryItem.gameSource == GameSource.STEAM
     }
 
     override suspend fun exportSaves(
@@ -936,7 +936,7 @@ class SteamAppScreen : BaseAppScreen() {
         // Legacy keeps its existing MANAGE_EXTERNAL_STORAGE / runtime perm flow.
         val initialStoragePermissionGranted = remember {
             when {
-                BuildConfig.MODERN_ANDROID -> true
+                BuildConfig.MODERN_ANDROID && PrefManager.defaultSteamLibraryPath.isBlank() -> true
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
                 else -> {
                     val writePermissionGranted = ContextCompat.checkSelfPermission(
@@ -1340,7 +1340,7 @@ class SteamAppScreen : BaseAppScreen() {
                     return@GameManagerDialog getGameDisplayInfo(context, libraryItem)
                 },
                 branch = gameManagerDialogState.branch,
-                onInstall = { dlcAppIds ->
+                onInstall = { dlcAppIds, libraryId ->
                     val branch = gameManagerDialogState.branch
                         ?: SteamService.getInstalledApp(gameId)?.branch
                         ?: "public"
@@ -1358,7 +1358,13 @@ class SteamAppScreen : BaseAppScreen() {
                         properties = mapOf("game_name" to (appInfo?.name ?: ""))
                     )
                     CoroutineScope(Dispatchers.IO).launch {
-                        SteamService.downloadApp(gameId, dlcAppIds, branch = branch, isUpdateOrVerify = false)
+                        SteamService.downloadApp(
+                            gameId,
+                            dlcAppIds,
+                            branch = branch,
+                            isUpdateOrVerify = false,
+                            libraryId = libraryId,
+                        )
                     }
                 },
                 onDismissRequest = {

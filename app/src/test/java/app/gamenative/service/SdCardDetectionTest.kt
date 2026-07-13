@@ -59,6 +59,20 @@ class SdCardDetectionTest {
     }
 
     @Test
+    fun `custom library root maps to standard Steam directories`() {
+        val root = tmpDir.newFolder("custom-library")
+
+        assertEquals(
+            File(root, "steamapps/common").path,
+            SteamService.steamLibraryInstallPath(root.path),
+        )
+        assertEquals(
+            File(root, "steamapps/staging").path,
+            SteamService.steamLibraryStagingPath(root.path),
+        )
+    }
+
+    @Test
     fun `empty name is skipped — never returns install root`() {
         val internal = tmpDir.newFolder("internal", "Steam", "steamapps", "common")
         val paths = listOf(internal.absolutePath)
