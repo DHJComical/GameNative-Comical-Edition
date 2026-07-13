@@ -9,6 +9,14 @@ import app.gamenative.ui.util.SnackbarManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.animateDp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +35,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -38,6 +47,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -52,12 +62,15 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.InputMode
@@ -65,6 +78,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -126,17 +140,40 @@ import app.gamenative.utils.PlatformOAuthHandlers
 import app.gamenative.utils.SteamUtils
 import kotlin.math.abs
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import android.os.SystemClock
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 
 private const val LIBRARY_ROTARY_INTERACTION_THRESHOLD_PX = 0.5f
+internal const val LIBRARY_DETAIL_ENTER_DURATION_MS = 360
+internal const val LIBRARY_DETAIL_EXIT_DURATION_MS = 260
+internal const val LIBRARY_DETAIL_INITIAL_SCALE = 0.9f
+internal const val LIBRARY_DETAIL_INITIAL_CORNER_DP = 14
+
+internal enum class LibraryDetailOrigin {
+    MAIN,
+    ADD_CATALOG,
+}
+
+internal data class LibraryDetailState(
+    val item: LibraryItem,
+    val origin: LibraryDetailOrigin,
+)
+
+internal fun shouldShowAddGameCatalog(
+    catalogOpen: Boolean,
+    detailState: LibraryDetailState?,
+): Boolean = catalogOpen && detailState == null
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeLibraryScreen(
     viewModel: LibraryViewModel = hiltViewModel(),
     addGameCatalogViewModel: AddGameCatalogViewModel = hiltViewModel(),
+    isActive: Boolean,
+    onExit: () -> Unit,
     onClickPlay: (String, Boolean) -> Unit,
     onTestGraphics: (String) -> Unit,
     onPlayWithDiagnostics: (String) -> Unit,
@@ -157,6 +194,8 @@ fun HomeLibraryScreen(
 
     LibraryScreenContent(
         state = state,
+        isActive = isActive,
+        onExit = onExit,
         listState = viewModel.listState,
         sheetState = sheetState,
         addGameCatalogState = addGameCatalogState,
@@ -258,6 +297,53 @@ internal fun isLibraryGlobalControllerKey(action: Int, keyCode: Int): Boolean =
         else -> false
     }
 
+internal fun isLibraryRootBackEnabled(
+    isActive: Boolean,
+    hasDetail: Boolean,
+    isAddGameCatalogOpen: Boolean,
+    isSearching: Boolean,
+    isSystemMenuOpen: Boolean,
+    isSystemMenuNavigationTransitionInProgress: Boolean,
+    isOptionsPanelOpen: Boolean,
+    isDialogOpen: Boolean,
+): Boolean = isActive &&
+    !hasDetail &&
+    !isAddGameCatalogOpen &&
+    !isSearching &&
+    !isSystemMenuOpen &&
+    !isSystemMenuNavigationTransitionInProgress &&
+    !isOptionsPanelOpen &&
+    !isDialogOpen
+
+internal enum class LibraryPreviewKeyAction {
+    IGNORE,
+    CONSUME,
+    PROCESS,
+}
+
+internal fun libraryPreviewKeyAction(
+    isActive: Boolean,
+    isSystemMenuNavigationTransitionInProgress: Boolean,
+    keyAction: Int,
+): LibraryPreviewKeyAction = when {
+    !isActive -> LibraryPreviewKeyAction.IGNORE
+    isSystemMenuNavigationTransitionInProgress && isLibraryKeyDown(keyAction) ->
+        LibraryPreviewKeyAction.CONSUME
+    isSystemMenuNavigationTransitionInProgress -> LibraryPreviewKeyAction.IGNORE
+    else -> LibraryPreviewKeyAction.PROCESS
+}
+
+internal fun shouldRestoreLibraryFocus(
+    isActive: Boolean,
+    isSystemMenuNavigationTransitionInProgress: Boolean,
+    systemMenuJustClosed: Boolean,
+    optionsPanelJustClosed: Boolean,
+    isSearching: Boolean,
+): Boolean = isActive &&
+    !isSystemMenuNavigationTransitionInProgress &&
+    (systemMenuJustClosed || optionsPanelJustClosed) &&
+    !isSearching
+
 internal fun isLibraryDirectionalMotion(
     actionMasked: Int,
     hatX: Float,
@@ -290,6 +376,8 @@ internal fun resetLibraryViewport(
 @Composable
 private fun LibraryScreenContent(
     state: LibraryState,
+    isActive: Boolean,
+    onExit: () -> Unit,
     listState: LazyGridState,
     sheetState: SheetState,
     addGameCatalogState: AddGameCatalogState,
@@ -434,7 +522,27 @@ private fun LibraryScreenContent(
         }
     }
 
-    var selectedAppId by remember { mutableStateOf<String?>(null) }
+    val detailScope = rememberCoroutineScope()
+    var detailState by remember { mutableStateOf<LibraryDetailState?>(null) }
+    var detailVisible by remember { mutableStateOf(false) }
+    var detailExitJob by remember { mutableStateOf<Job?>(null) }
+    val addGameCatalogGridState = rememberLazyGridState()
+
+    fun openDetail(item: LibraryItem, origin: LibraryDetailOrigin) {
+        detailExitJob?.cancel()
+        detailState = LibraryDetailState(item = item, origin = origin)
+        detailVisible = true
+    }
+
+    fun closeDetail() {
+        if (!detailVisible) return
+        detailVisible = false
+        detailExitJob?.cancel()
+        detailExitJob = detailScope.launch {
+            delay(LIBRARY_DETAIL_EXIT_DURATION_MS.toLong())
+            detailState = null
+        }
+    }
     val carouselListState = rememberLazyListState()
     val isViewWide = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     var currentPaneType by remember { mutableStateOf(PrefManager.libraryLayout) }
@@ -456,11 +564,10 @@ private fun LibraryScreenContent(
     var pendingCarouselFocusRequest by remember { mutableStateOf(false) }
 
     var isSystemMenuOpen by remember { mutableStateOf(false) }
+    var isSystemMenuNavigationTransitionInProgress by remember { mutableStateOf(false) }
     // Track previous overlay states to detect when they close
     var wasSystemMenuOpen by remember { mutableStateOf(false) }
     var wasOptionsPanelOpen by remember { mutableStateOf(false) }
-    // Keep a stable reference to the selected item so detail view doesn't disappear during list refresh/pagination.
-    var selectedLibraryItem by remember { mutableStateOf<LibraryItem?>(null) }
     val filterFabExpanded by remember(currentPaneType, listState, carouselListState) {
         derivedStateOf {
             if (currentPaneType == PaneType.CAROUSEL) {
@@ -664,30 +771,39 @@ private fun LibraryScreenContent(
         }
     }
 
-    BackHandler(enabled = isSystemMenuOpen) {
-        isSystemMenuOpen = false
-    }
-
-    BackHandler(enabled = state.isOptionsPanelOpen) {
+    BackHandler(enabled = isActive && state.isOptionsPanelOpen) {
         onOptionsPanelToggle(false)
     }
 
-    BackHandler(enabled = state.isSearching && selectedAppId == null) {
+    BackHandler(enabled = isActive && state.isSearching && detailState == null) {
         onIsSearching(false)
         onSearchQuery("")
     }
 
-    BackHandler(selectedLibraryItem != null) {
-        selectedAppId = null
-        selectedLibraryItem = null
+    BackHandler(enabled = isActive && detailState != null) {
+        closeDetail()
     }
 
+    BackHandler(
+        enabled = isLibraryRootBackEnabled(
+            isActive = isActive,
+            hasDetail = detailState != null,
+            isAddGameCatalogOpen = addGameCatalogState.isOpen,
+            isSearching = state.isSearching,
+            isSystemMenuOpen = isSystemMenuOpen,
+            isSystemMenuNavigationTransitionInProgress = isSystemMenuNavigationTransitionInProgress,
+            isOptionsPanelOpen = state.isOptionsPanelOpen,
+            isDialogOpen = showAddCustomGameDialog,
+        ),
+        onBack = onExit,
+    )
+
     // Restore focus when returning from game detail (without reloading list)
-    LaunchedEffect(selectedAppId) {
-        if (selectedAppId != null) {
+    LaunchedEffect(detailState) {
+        if (detailState != null) {
             controllerBootstrapNeeded = true
         }
-        if (selectedAppId == null) {
+        if (detailState == null) {
             // Brief delay to let the UI settle after transition
             kotlinx.coroutines.delay(100)
             // Restore focus to content area
@@ -713,15 +829,11 @@ private fun LibraryScreenContent(
     // The detail (game) page deliberately does NOT use this — the hero image is meant
     // to bleed through the cutout, so AppScreenContent insets only the elements that
     // need to stay tappable (e.g. the back button) instead.
-    val safePaddingModifier = if (selectedLibraryItem == null) {
-        Modifier.windowInsetsPadding(
-            WindowInsets.statusBars
-                .union(WindowInsets.displayCutout)
-                .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-        )
-    } else {
-        Modifier
-    }
+    val safePaddingModifier = Modifier.windowInsetsPadding(
+        WindowInsets.statusBars
+            .union(WindowInsets.displayCutout)
+            .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+    )
 
     // Restore focus after tab change - handles both empty and populated tabs
     LaunchedEffect(state.currentTab) {
@@ -744,13 +856,13 @@ private fun LibraryScreenContent(
         pendingGridFocusRequest,
         gridFocusTargetListIndex,
         state.appInfoList.size,
-        selectedAppId,
+        detailState,
         isSystemMenuOpen,
         state.isOptionsPanelOpen,
         state.isSearching,
     ) {
         if (pendingGridFocusRequest && state.appInfoList.isNotEmpty()) {
-            if (selectedAppId == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching) {
+            if (detailState == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching) {
                 var retries = 0
                 while (pendingGridFocusRequest && retries < 8) {
                     try {
@@ -770,13 +882,13 @@ private fun LibraryScreenContent(
         pendingCarouselFocusRequest,
         carouselFocusTargetListIndex,
         state.appInfoList.size,
-        selectedAppId,
+        detailState,
         isSystemMenuOpen,
         state.isOptionsPanelOpen,
         state.isSearching,
     ) {
         if (pendingCarouselFocusRequest && state.appInfoList.isNotEmpty()) {
-            if (selectedAppId == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching) {
+            if (detailState == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching) {
                 val targetIndex = currentCarouselFocusTargetIndex()
                 if (carouselListState.layoutInfo.visibleItemsInfo.none { it.index == targetIndex }) {
                     carouselListState.scrollToItem(targetIndex)
@@ -798,7 +910,7 @@ private fun LibraryScreenContent(
     // If the app list starts empty and populates later, bootstrap controller focus once content is ready.
     LaunchedEffect(
         state.appInfoList.size,
-        selectedAppId,
+        detailState,
         isSystemMenuOpen,
         state.isOptionsPanelOpen,
         state.isSearching,
@@ -807,10 +919,10 @@ private fun LibraryScreenContent(
         val listBecameNonEmpty = previousAppCount == 0 && currentCount > 0
         val listBecameEmpty = previousAppCount > 0 && currentCount == 0
 
-        if (listBecameNonEmpty && selectedAppId == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching && !tabBarHasFocus) {
+        if (listBecameNonEmpty && detailState == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching && !tabBarHasFocus) {
             requestContentFocusOrDefer()
         }
-        if (listBecameEmpty && selectedAppId == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching && !tabBarHasFocus) {
+        if (listBecameEmpty && detailState == null && !isSystemMenuOpen && !state.isOptionsPanelOpen && !state.isSearching && !tabBarHasFocus) {
             // Empty tabs can drop focused children; re-anchor focus at the root so bumper nav keeps working.
             requestRootFocusSafe()
         }
@@ -819,11 +931,23 @@ private fun LibraryScreenContent(
     }
 
     // Restore focus when System Menu or Options Panel closes
-    LaunchedEffect(isSystemMenuOpen, state.isOptionsPanelOpen) {
+    LaunchedEffect(
+        isActive,
+        isSystemMenuOpen,
+        isSystemMenuNavigationTransitionInProgress,
+        state.isOptionsPanelOpen,
+    ) {
         val systemMenuJustClosed = wasSystemMenuOpen && !isSystemMenuOpen
         val optionsPanelJustClosed = wasOptionsPanelOpen && !state.isOptionsPanelOpen
 
-        if ((systemMenuJustClosed || optionsPanelJustClosed) && !state.isSearching) {
+        if (shouldRestoreLibraryFocus(
+                isActive = isActive,
+                isSystemMenuNavigationTransitionInProgress = isSystemMenuNavigationTransitionInProgress,
+                systemMenuJustClosed = systemMenuJustClosed,
+                optionsPanelJustClosed = optionsPanelJustClosed,
+                isSearching = state.isSearching,
+            )
+        ) {
             // Give a brief moment for the overlay to animate out
             kotlinx.coroutines.delay(50)
             // Restore focus to the active content layout
@@ -845,7 +969,7 @@ private fun LibraryScreenContent(
     // Helper functions defined in composable scope to capture latest state on each recomposition.
     val canBootstrapContentFocus: () -> Boolean = {
         val now = SystemClock.uptimeMillis()
-        selectedAppId == null &&
+        detailState == null &&
             !isSystemMenuOpen &&
             !state.isOptionsPanelOpen &&
             !state.isSearching &&
@@ -856,13 +980,14 @@ private fun LibraryScreenContent(
             (now - lastBootstrapAtMs) > 250L
     }
     val canNavigateTabsWithoutFocus: () -> Boolean = {
-        selectedAppId == null &&
+        detailState == null &&
             !isSystemMenuOpen &&
             !state.isOptionsPanelOpen &&
             !state.isSearching &&
             !rootHasFocus
     }
     val latestInitialLoadComplete by rememberUpdatedState(state.initialLoadComplete)
+    val latestIsActive by rememberUpdatedState(isActive)
     val latestAddGameCatalogOpen by rememberUpdatedState(addGameCatalogState.isOpen)
     val latestCanBootstrapContentFocus by rememberUpdatedState(canBootstrapContentFocus)
     val latestCanNavigateTabsWithoutFocus by rememberUpdatedState(canNavigateTabsWithoutFocus)
@@ -875,7 +1000,10 @@ private fun LibraryScreenContent(
     DisposableEffect(Unit) {
         val onGlobalKeyEvent: (AndroidEvent.KeyEvent) -> Boolean = { androidEvent ->
             val event = androidEvent.event
-            if (latestAddGameCatalogOpen || !isLibraryGlobalControllerKey(event.action, event.keyCode)) {
+            if (!latestIsActive ||
+                latestAddGameCatalogOpen ||
+                !isLibraryGlobalControllerKey(event.action, event.keyCode)
+            ) {
                 false
             } else {
                 reportLibraryInteractionIfReady(latestInitialLoadComplete, latestOnLibraryUserInteraction)
@@ -966,7 +1094,6 @@ private fun LibraryScreenContent(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .then(safePaddingModifier)
             .focusRequester(rootFocusRequester)
             .focusable()
             .onFocusChanged { focusState ->
@@ -982,13 +1109,22 @@ private fun LibraryScreenContent(
                 reportLibraryInteractionIfReady(state.initialLoadComplete, onLibraryUserInteraction)
             }
             .onPreviewKeyEvent { keyEvent ->
+                when (libraryPreviewKeyAction(
+                    isActive = isActive,
+                    isSystemMenuNavigationTransitionInProgress = isSystemMenuNavigationTransitionInProgress,
+                    keyAction = keyEvent.nativeKeyEvent.action,
+                )) {
+                    LibraryPreviewKeyAction.IGNORE -> return@onPreviewKeyEvent false
+                    LibraryPreviewKeyAction.CONSUME -> return@onPreviewKeyEvent true
+                    LibraryPreviewKeyAction.PROCESS -> Unit
+                }
                 if (addGameCatalogState.isOpen) return@onPreviewKeyEvent false
                 // TODO: consider abstracting this
                 // Handle gamepad buttons
                 if (state.initialLoadComplete && isLibraryKeyDown(keyEvent.nativeKeyEvent.action)) {
                     onLibraryUserInteraction()
                     val keyCode = keyEvent.nativeKeyEvent.keyCode
-                    val canBootstrapContentFocus = selectedAppId == null &&
+                    val canBootstrapContentFocus = detailState == null &&
                         !state.isOptionsPanelOpen &&
                         !isSystemMenuOpen &&
                         !state.isSearching &&
@@ -1019,7 +1155,7 @@ private fun LibraryScreenContent(
 
                         // L1 button - previous tab
                         KeyEvent.KEYCODE_BUTTON_L1 -> {
-                            if (selectedAppId == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                            if (detailState == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
                                 if (canBootstrapContentFocus) {
                                     requestContentFocusOrDefer()
                                 }
@@ -1032,7 +1168,7 @@ private fun LibraryScreenContent(
 
                         // R1 button - next tab
                         KeyEvent.KEYCODE_BUTTON_R1 -> {
-                            if (selectedAppId == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                            if (detailState == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
                                 if (canBootstrapContentFocus) {
                                     requestContentFocusOrDefer()
                                 }
@@ -1045,7 +1181,7 @@ private fun LibraryScreenContent(
 
                         // SELECT button - toggle options panel (library filters/sort)
                         KeyEvent.KEYCODE_BUTTON_SELECT -> {
-                            if (selectedAppId == null && !isSystemMenuOpen) {
+                            if (detailState == null && !isSystemMenuOpen) {
                                 onOptionsPanelToggle(!state.isOptionsPanelOpen)
                                 true
                             } else {
@@ -1057,7 +1193,7 @@ private fun LibraryScreenContent(
                         KeyEvent.KEYCODE_BUTTON_START,
                         KeyEvent.KEYCODE_MENU,
                         -> {
-                            if (selectedAppId == null && !state.isOptionsPanelOpen) {
+                            if (detailState == null && !state.isOptionsPanelOpen) {
                                 isSystemMenuOpen = !isSystemMenuOpen
                                 true
                             } else {
@@ -1067,7 +1203,7 @@ private fun LibraryScreenContent(
 
                         // Y button - toggle search
                         KeyEvent.KEYCODE_BUTTON_Y -> {
-                            if (selectedAppId == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                            if (detailState == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
                                 onIsSearching(!state.isSearching)
                                 true
                             } else {
@@ -1077,7 +1213,7 @@ private fun LibraryScreenContent(
 
                         // X button - add custom game
                         KeyEvent.KEYCODE_BUTTON_X -> {
-                            if (selectedAppId == null && !state.isSearching && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+                            if (detailState == null && !state.isSearching && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
                                 onOpenAddGameCatalog()
                                 true
                             } else {
@@ -1087,7 +1223,7 @@ private fun LibraryScreenContent(
 
                         // B button - contextual back / open system menu
                         KeyEvent.KEYCODE_BUTTON_B -> {
-                            if (selectedAppId != null) {
+                            if (detailState != null) {
                                 // Let LibraryAppScreen handle its own B-button
                                 false
                             } else if (isSystemMenuOpen) {
@@ -1114,9 +1250,14 @@ private fun LibraryScreenContent(
                 }
             }
     ) {
-        if (selectedAppId == null) {
-            // Use Box to allow content to scroll behind the tab bar
-            Box(modifier = Modifier.fillMaxSize()) {
+        // Keep the library composed beneath the detail window so scroll, focus and images survive the round trip.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(safePaddingModifier)
+                .focusProperties { canFocus = detailState == null }
+                .then(if (detailState != null) Modifier.clearAndSetSemantics { } else Modifier),
+        ) {
                 // When on Steam/GOG/Epic/Amazon tab and not logged in, or LOCAL tab with no custom games, show splash
                 val showEmptyStateSplash = when (state.currentTab) {
                     LibraryTab.STEAM -> !SteamUtils.hasStoredCredentials() && !state.isLoading
@@ -1171,8 +1312,10 @@ private fun LibraryScreenContent(
                             onPageChange = onPageChange,
                             onNavigate = { appId ->
                                 onLibraryUserInteraction()
-                                selectedAppId = appId
-                                selectedLibraryItem = state.appInfoList.find { it.appId == appId }
+                                openDetail(
+                                    item = state.appInfoList.first { it.appId == appId },
+                                    origin = LibraryDetailOrigin.MAIN,
+                                )
                             },
                             onRefresh = {
                                 onLibraryUserInteraction()
@@ -1194,8 +1337,10 @@ private fun LibraryScreenContent(
                             onPageChange = onPageChange,
                             onNavigate = { appId ->
                                 onLibraryUserInteraction()
-                                selectedAppId = appId
-                                selectedLibraryItem = state.appInfoList.find { it.appId == appId }
+                                openDetail(
+                                    item = state.appInfoList.first { it.appId == appId },
+                                    origin = LibraryDetailOrigin.MAIN,
+                                )
                             },
                             onRefresh = {
                                 onLibraryUserInteraction()
@@ -1279,34 +1424,60 @@ private fun LibraryScreenContent(
                             },
                     )
                     }
-                }
-        } else {
-            LibraryDetailPane(
-                libraryItem = selectedLibraryItem,
-                onBack = {
-                    selectedAppId = null
-                    selectedLibraryItem = null
-                },
-                onClickPlay = {
-                    selectedLibraryItem?.let { libraryItem ->
-                        onClickPlay(libraryItem.appId, it)
+        }
+
+        if (detailState != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                            }
+                        }
                     }
-                },
-                onTestGraphics = {
-                    selectedLibraryItem?.let { libraryItem ->
-                        onTestGraphics(libraryItem.appId)
-                    }
-                },
-                onPlayWithDiagnostics = {
-                    selectedLibraryItem?.let { libraryItem ->
-                        onPlayWithDiagnostics(libraryItem.appId)
-                    }
-                },
+                    .clearAndSetSemantics { },
             )
         }
 
+        AnimatedVisibility(
+            visible = detailVisible,
+            enter = scaleIn(
+                initialScale = LIBRARY_DETAIL_INITIAL_SCALE,
+                transformOrigin = TransformOrigin.Center,
+                animationSpec = tween(LIBRARY_DETAIL_ENTER_DURATION_MS),
+            ) + fadeIn(animationSpec = tween(LIBRARY_DETAIL_ENTER_DURATION_MS)),
+            exit = scaleOut(
+                targetScale = LIBRARY_DETAIL_INITIAL_SCALE,
+                transformOrigin = TransformOrigin.Center,
+                animationSpec = tween(LIBRARY_DETAIL_EXIT_DURATION_MS),
+            ) + fadeOut(animationSpec = tween(LIBRARY_DETAIL_EXIT_DURATION_MS)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            val cornerRadius by transition.animateDp(label = "detailWindowCorner") { transitionState ->
+                if (transitionState == EnterExitState.Visible) 0.dp else LIBRARY_DETAIL_INITIAL_CORNER_DP.dp
+            }
+            val detail = detailState
+            if (detail != null) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(cornerRadius),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    LibraryDetailPane(
+                        libraryItem = detail.item,
+                        onBack = ::closeDetail,
+                        onClickPlay = { onClickPlay(detail.item.appId, it) },
+                        onTestGraphics = { onTestGraphics(detail.item.appId) },
+                        onPlayWithDiagnostics = { onPlayWithDiagnostics(detail.item.appId) },
+                    )
+                }
+            }
+        }
+
         // Bottom action bar
-        if (selectedAppId == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
+        if (detailState == null && !state.isOptionsPanelOpen && !isSystemMenuOpen) {
             val libraryActions = if (state.isSearching) {
                 listOf(
                     LibraryActions.select,
@@ -1365,7 +1536,7 @@ private fun LibraryScreenContent(
             )
         }
 
-        if (selectedAppId == null &&
+        if (detailState == null &&
             !state.isSearching &&
             !state.isOptionsPanelOpen &&
             !isSystemMenuOpen &&
@@ -1386,7 +1557,7 @@ private fun LibraryScreenContent(
         }
 
         // Options panel (SELECT) - renders on top of everything
-        if (selectedAppId == null) {
+        if (detailState == null) {
             LibraryOptionsPanel(
                 isOpen = state.isOptionsPanelOpen,
                 onDismiss = { onOptionsPanelToggle(false) },
@@ -1416,8 +1587,12 @@ private fun LibraryScreenContent(
             val amazonLoggedIn = app.gamenative.service.amazon.AmazonAuthManager.hasStoredCredentials(context)
 
             SystemMenu(
+                isActive = isActive,
                 isOpen = isSystemMenuOpen,
                 onDismiss = { isSystemMenuOpen = false },
+                onNavigationTransitionChanged = {
+                    isSystemMenuNavigationTransitionInProgress = it
+                },
                 onNavigateRoute = onNavigateRoute,
                 onDownloadsClick = onDownloadsClick,
                 onStorageClick = onStorageClick,
@@ -1510,10 +1685,11 @@ private fun LibraryScreenContent(
             )
         }
 
-        if (addGameCatalogState.isOpen) {
+        if (isActive && shouldShowAddGameCatalog(addGameCatalogState.isOpen, detailState)) {
             AddGamesBottomSheet(
                 sheetState = sheetState,
                 state = addGameCatalogState,
+                gridState = addGameCatalogGridState,
                 onStoreSelected = onAddGameStoreSelected,
                 onLocalFolder = {
                     storeBeforeFolderPicker = addGameCatalogState.selectedStore
@@ -1521,9 +1697,10 @@ private fun LibraryScreenContent(
                     folderPicker.launchPicker()
                 },
                 onGameClick = { item ->
-                    selectedAppId = item.appId
-                    selectedLibraryItem = item
-                    onCloseAddGameCatalog()
+                    detailScope.launch {
+                        sheetState.hide()
+                        openDetail(item = item, origin = LibraryDetailOrigin.ADD_CATALOG)
+                    }
                 },
                 onRetry = {
                     if (addGameCatalogState.requiresLogin) {
@@ -1584,6 +1761,8 @@ private fun Preview_LibraryScreenContent() {
         LibraryScreenContent(
             listState = rememberLazyGridState(),
             state = state,
+            isActive = true,
+            onExit = { },
             sheetState = sheetState,
             addGameCatalogState = AddGameCatalogState(),
             onOpenAddGameCatalog = { },

@@ -30,6 +30,23 @@ import com.materialkolor.PaletteStyle
 
 private const val HOME_PAGE_TRANSITION_DURATION_MS = 360
 
+internal enum class HomeBackAction {
+    NOT_HANDLED,
+    CONSUME,
+    NAVIGATE_LIBRARY,
+    NAVIGATE_STORAGE,
+}
+
+internal fun homeBackAction(
+    destination: HomeDestination,
+    gameLibraryOperationActive: Boolean,
+): HomeBackAction = when {
+    destination == HomeDestination.Library -> HomeBackAction.NOT_HANDLED
+    destination == HomeDestination.GameLibraries && gameLibraryOperationActive -> HomeBackAction.CONSUME
+    destination == HomeDestination.GameLibraries -> HomeBackAction.NAVIGATE_STORAGE
+    else -> HomeBackAction.NAVIGATE_LIBRARY
+}
+
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
@@ -50,8 +67,22 @@ fun HomeScreen(
     val homeState by viewModel.homeState.collectAsStateWithLifecycle()
     var gameLibraryOperationActive by remember { mutableStateOf(false) }
 
+    val backAction = homeBackAction(homeState.currentDestination, gameLibraryOperationActive)
+    // Register the destination fallback before child pages so their nested BackHandlers take priority.
+    BackHandler(enabled = backAction != HomeBackAction.NOT_HANDLED) {
+        when (backAction) {
+            HomeBackAction.NOT_HANDLED,
+            HomeBackAction.CONSUME,
+            -> Unit
+            HomeBackAction.NAVIGATE_LIBRARY -> viewModel.onDestination(HomeDestination.Library)
+            HomeBackAction.NAVIGATE_STORAGE -> viewModel.onDestination(HomeDestination.Storage)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         HomeLibraryScreen(
+            isActive = homeState.currentDestination == HomeDestination.Library,
+            onExit = onClickExit,
             onClickPlay = onClickPlay,
             onTestGraphics = onTestGraphics,
             onPlayWithDiagnostics = onPlayWithDiagnostics,
@@ -129,18 +160,6 @@ fun HomeScreen(
         }
     }
 
-    // Register after the layered pages so this takes priority over handlers in the retained Library UI.
-    BackHandler {
-        if (homeState.currentDestination == HomeDestination.GameLibraries && gameLibraryOperationActive) {
-            return@BackHandler
-        } else if (homeState.currentDestination == HomeDestination.GameLibraries) {
-            viewModel.onDestination(HomeDestination.Storage)
-        } else if (homeState.currentDestination != HomeDestination.Library) {
-            viewModel.onDestination(HomeDestination.Library)
-        } else {
-            onClickExit()
-        }
-    }
 }
 
 @Preview(uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)

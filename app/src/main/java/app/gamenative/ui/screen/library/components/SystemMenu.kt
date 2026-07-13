@@ -62,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,12 +92,58 @@ import app.gamenative.ui.util.adaptivePanelWidth
 import app.gamenative.ui.util.shouldShowGamepadUI
 import app.gamenative.utils.getAvatarURL
 import `in`.dragonbra.javasteam.enums.EPersonaState
-import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-private const val MENU_EXIT_DURATION_MS = 180
+internal const val MENU_EXIT_DURATION_MS = 180
+
+internal class SystemMenuNavigationTransition(
+    private val exitDurationMs: Long = MENU_EXIT_DURATION_MS.toLong(),
+) {
+    var inProgress by mutableStateOf(false)
+        private set
+
+    fun start(
+        scope: CoroutineScope,
+        onDismiss: () -> Unit,
+        onTransitionChanged: (Boolean) -> Unit,
+        action: () -> Unit,
+    ): Boolean {
+        if (inProgress) return false
+
+        inProgress = true
+        try {
+            onTransitionChanged(true)
+            onDismiss()
+        } catch (error: Throwable) {
+            Timber.e(error, "Failed to begin System Menu navigation transition")
+            inProgress = false
+            onTransitionChanged(false)
+            throw error
+        }
+
+        scope.launch {
+            try {
+                delay(exitDurationMs)
+                action()
+            } catch (error: Throwable) {
+                Timber.e(error, "Failed to complete System Menu navigation transition")
+                throw error
+            } finally {
+                inProgress = false
+                onTransitionChanged(false)
+            }
+        }
+        return true
+    }
+}
+
+internal fun systemMenuTransitionConsumesBack(
+    isActive: Boolean,
+    navigationTransitionInProgress: Boolean,
+): Boolean = isActive && navigationTransitionInProgress
 
 /**
  * A single menu item in the System Menu
@@ -247,8 +294,10 @@ private fun StatusOption(
  */
 @Composable
 fun SystemMenu(
+    isActive: Boolean,
     isOpen: Boolean,
     onDismiss: () -> Unit,
+    onNavigationTransitionChanged: (Boolean) -> Unit,
     onNavigateRoute: (String) -> Unit,
     onDownloadsClick: () -> Unit = {},
     onStorageClick: () -> Unit = {},
@@ -275,18 +324,21 @@ fun SystemMenu(
     var selectedStatus by remember(persona) { mutableStateOf(persona?.state ?: EPersonaState.Online) }
     var showSupporters by remember { mutableStateOf(false) }
     var showStatusPicker by remember { mutableStateOf(false) }
-    var isLeavingMenu by remember { mutableStateOf(false) }
+    val navigationTransition = remember { SystemMenuNavigationTransition() }
+    val navigationTransitionInProgress = navigationTransition.inProgress
+    val latestNavigationTransitionChanged by rememberUpdatedState(onNavigationTransitionChanged)
+
+    LaunchedEffect(Unit) {
+        latestNavigationTransitionChanged(false)
+    }
 
     val dismissThen: (() -> Unit) -> Unit = { action ->
-        if (!isLeavingMenu) {
-            isLeavingMenu = true
-            onDismiss()
-            scope.launch {
-                delay(MENU_EXIT_DURATION_MS.toLong().milliseconds)
-                action()
-                isLeavingMenu = false
-            }
-        }
+        navigationTransition.start(
+            scope = scope,
+            onDismiss = onDismiss,
+            onTransitionChanged = { latestNavigationTransitionChanged(it) },
+            action = action,
+        )
     }
 
     LaunchedEffect(Unit) {
@@ -317,12 +369,15 @@ fun SystemMenu(
         }
     }
 
-    BackHandler(enabled = isOpen && showStatusPicker) {
+    BackHandler(enabled = isActive && isOpen && showStatusPicker && !navigationTransitionInProgress) {
         showStatusPicker = false
     }
-    BackHandler(enabled = isOpen && !showStatusPicker) {
+    BackHandler(enabled = isActive && isOpen && !showStatusPicker && !navigationTransitionInProgress) {
         onDismiss()
     }
+    BackHandler(
+        enabled = systemMenuTransitionConsumesBack(isActive, navigationTransitionInProgress),
+    ) {}
 
     SupportersDialog(visible = showSupporters, onDismiss = { showSupporters = false })
 
@@ -590,7 +645,9 @@ fun SystemMenu(
                             text = stringResource(R.string.settings_text),
                             icon = Icons.Default.Settings,
                             onClick = {
-                                onNavigateRoute(PluviaScreen.Settings.route)
+                                dismissThen {
+                                    onNavigateRoute(PluviaScreen.Settings.route)
+                                }
                             },
                             focusRequester = firstItemFocusRequester,
                         )
@@ -599,7 +656,7 @@ fun SystemMenu(
                             text = stringResource(R.string.downloads_section_title),
                             icon = Icons.Default.Download,
                             onClick = {
-                                onDownloadsClick()
+                                dismissThen(onDownloadsClick)
                             },
                             focusRequester = firstItemFocusRequester,
                         )
@@ -607,7 +664,7 @@ fun SystemMenu(
                         SystemMenuItem(
                             text = stringResource(R.string.settings_storage_manage_title),
                             icon = Icons.Default.Storage,
-                            onClick = onStorageClick,
+                            onClick = { dismissThen(onStorageClick) },
                         )
 
                         SystemMenuItem(
@@ -783,8 +840,10 @@ private fun Preview_SystemMenu() {
                 }
 
                 SystemMenu(
+                    isActive = true,
                     isOpen = true,
                     onDismiss = { },
+                    onNavigationTransitionChanged = { },
                     onNavigateRoute = { },
                     onLogout = { },
                     onGoOnline = { },
