@@ -3392,13 +3392,26 @@ class SteamService : Service(), IChallengeUrlChanged {
             instance?.friendCheckerJob?.cancel()
         }
 
-        private fun performLogOffDuties(clearCloudSyncState: Boolean = false) {
+        internal fun terminalLogoutReason(
+            isStopping: Boolean,
+            isLoggingOut: Boolean,
+            hadLoggedInSession: Boolean,
+        ): SteamEvent.LogoutReason? = when {
+            isLoggingOut || !hadLoggedInSession -> null
+            isStopping -> SteamEvent.LogoutReason.SERVICE_STOPPED
+            else -> SteamEvent.LogoutReason.CONNECTION_LOST
+        }
+
+        private fun performLogOffDuties(
+            clearCloudSyncState: Boolean = false,
+            reason: SteamEvent.LogoutReason = SteamEvent.LogoutReason.USER_REQUEST,
+        ) {
             val username = PrefManager.username
 
             clearUserData(clearCloudSyncState = clearCloudSyncState)
             instance?._localPersona?.value = SteamFriend()
 
-            val event = SteamEvent.LoggedOut(username)
+            val event = SteamEvent.LoggedOut(username, reason)
             PluviaApp.events.emit(event)
 
             cancelLongLivedSteamJobs()
@@ -4079,6 +4092,13 @@ class SteamService : Service(), IChallengeUrlChanged {
             // the reason we don't clearValues() here is because the onDisconnect
             // callback does it for us
         } else {
+            terminalLogoutReason(
+                isStopping = true,
+                isLoggingOut = isLoggingOut,
+                hadLoggedInSession = steamClient?.steamID?.isValid == true,
+            )?.let { reason ->
+                PluviaApp.events.emit(SteamEvent.LoggedOut(PrefManager.username, reason))
+            }
             clearValues()
         }
     }
@@ -4111,8 +4131,6 @@ class SteamService : Service(), IChallengeUrlChanged {
         retryAttempt = 0
 
         PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
-        PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
-
         LogManager.removeListener(logger)
     }
 
@@ -4177,9 +4195,19 @@ class SteamService : Service(), IChallengeUrlChanged {
                 if (isRunning && !isStopping) connectToSteam()
             }
         } else {
+            val logoutReason = terminalLogoutReason(
+                isStopping = isStopping,
+                isLoggingOut = isLoggingOut,
+                hadLoggedInSession = steamClient?.steamID?.isValid == true,
+            )
+
             // only terminal when retries exhausted, not when user/system stopped the service
             val event = SteamEvent.Disconnected(isTerminal = !isStopping)
             PluviaApp.events.emit(event)
+
+            logoutReason?.let { reason ->
+                PluviaApp.events.emit(SteamEvent.LoggedOut(PrefManager.username, reason))
+            }
 
             clearValues()
 
@@ -4274,7 +4302,7 @@ class SteamService : Service(), IChallengeUrlChanged {
 
             else -> {
                 if (shouldClearUserDataForLoggedOnFailure(callback.result)) {
-                    clearUserData()
+                    performLogOffDuties(reason = SteamEvent.LogoutReason.CREDENTIALS_REJECTED)
                 }
 
                 _loginResult = LoginResult.Failed

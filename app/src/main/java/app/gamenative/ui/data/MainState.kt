@@ -17,6 +17,7 @@ data class MainState(
     val annoyingDialogShown: Boolean = false,
     val hasCrashedLastStart: Boolean = false,
     val isSteamConnected: Boolean = false,
+    val isSteamLoggedIn: Boolean = false,
     val launchedAppId: String = "",
     val bootToContainer: Boolean = false,
     val testGraphics: Boolean = false,

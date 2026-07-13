@@ -181,6 +181,11 @@ private fun NavHostController.navigateFromLoginIfNeeded(
     }
 }
 
+internal fun effectiveHomeOffline(requestedOffline: Boolean, isSteamLoggedIn: Boolean): Boolean =
+    requestedOffline && !isSteamLoggedIn
+
+internal fun shouldOpenLoginForGoOnline(isSteamLoggedIn: Boolean): Boolean = !isSteamLoggedIn
+
 private sealed class GameResolutionResult {
     data class Success(
         val finalAppId: String,
@@ -586,16 +591,6 @@ fun PluviaMain(
                                 val targetRoute = viewModel.getPersistedRoute() ?: PluviaScreen.Home.route
                                 if (currentRoute == PluviaScreen.LoginUser.route) {
                                     navController.navigateFromLoginIfNeeded(targetRoute, "LogonEnded")
-                                } else if (currentRoute == PluviaScreen.Home.route + "?offline={offline}") {
-                                    val isCurrentlyOffline = navController.currentBackStackEntry
-                                        ?.arguments?.getBoolean("offline") ?: false
-                                    if (isCurrentlyOffline) {
-                                        navController.navigate(PluviaScreen.Home.route + "?offline=false") {
-                                            popUpTo(PluviaScreen.Home.route + "?offline={offline}") {
-                                                inclusive = true
-                                            }
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -1348,7 +1343,11 @@ fun PluviaMain(
                         },
                     ),
                 ) { backStackEntry ->
-                    val isOffline = backStackEntry.arguments?.getBoolean("offline") ?: false
+                    val requestedOffline = backStackEntry.arguments?.getBoolean("offline") ?: false
+                    val isOffline = effectiveHomeOffline(
+                        requestedOffline = requestedOffline,
+                        isSteamLoggedIn = state.isSteamLoggedIn,
+                    )
 
                     // Show update/crash/support dialogs when Home is first displayed
                     // Skip when offline with Steam credentials (avoid flash when Steam reconnects)
@@ -1477,10 +1476,9 @@ fun PluviaMain(
                             SteamService.logOut()
                         },
                         onGoOnline = {
-                            navController.navigate(
-                                if (!SteamService.isLoggedIn) PluviaScreen.LoginUser.route
-                                else PluviaScreen.Home.route
-                            )
+                            if (shouldOpenLoginForGoOnline(state.isSteamLoggedIn)) {
+                                navController.navigate(PluviaScreen.LoginUser.route)
+                            }
                         },
                         appTheme = state.appTheme,
                         paletteStyle = state.paletteStyle,

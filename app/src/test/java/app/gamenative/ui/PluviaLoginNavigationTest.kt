@@ -56,4 +56,33 @@ class PluviaLoginNavigationTest {
             ),
         )
     }
+
+    @Test
+    fun `background login keeps the existing home entry`() {
+        assertEquals(
+            LoginNavigationAction.IGNORE,
+            loginNavigationAction(
+                currentRoute = homeDestinationRoute,
+                previousRoute = null,
+                targetRoute = "$homeRoute?offline=false",
+            ),
+        )
+    }
+
+    @Test
+    fun `requested offline mode ends after Steam login without replacing home`() {
+        assertEquals(true, effectiveHomeOffline(requestedOffline = true, isSteamLoggedIn = false))
+        assertEquals(false, effectiveHomeOffline(requestedOffline = true, isSteamLoggedIn = true))
+    }
+
+    @Test
+    fun `explicit online route remains online while Steam is disconnected`() {
+        assertEquals(false, effectiveHomeOffline(requestedOffline = false, isSteamLoggedIn = false))
+    }
+
+    @Test
+    fun `go online opens login only when Steam is not logged in`() {
+        assertEquals(true, shouldOpenLoginForGoOnline(isSteamLoggedIn = false))
+        assertEquals(false, shouldOpenLoginForGoOnline(isSteamLoggedIn = true))
+    }
 }
