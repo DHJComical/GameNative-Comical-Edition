@@ -20,17 +20,21 @@ class InstalledLibraryFilterTest {
     }
 
     @Test
-    fun installedSteamAppsAreNotOwnerFilteredByDefault() {
-        assertTrue(shouldIncludeInstalledSteamApp(emptyList(), currentAccountId = 42, sharedOnly = false))
-        assertTrue(shouldIncludeInstalledSteamApp(listOf(7), currentAccountId = 42, sharedOnly = false))
+    fun defaultGameAndSharedFiltersIncludeEveryInstalledOwnershipState() {
+        val filters = EnumSet.of(AppFilter.GAME, AppFilter.SHARED)
+        val includeShared = filters.contains(AppFilter.SHARED)
+
+        assertTrue(shouldIncludeInstalledSteamApp(listOf(42), currentAccountId = 42, includeShared))
+        assertTrue(shouldIncludeInstalledSteamApp(listOf(7), currentAccountId = 42, includeShared))
+        assertTrue(shouldIncludeInstalledSteamApp(emptyList(), currentAccountId = 42, includeShared))
     }
 
     @Test
-    fun sharedFilterOnlyIncludesAppsOwnedByAnotherAccount() {
-        assertTrue(shouldIncludeInstalledSteamApp(listOf(7), currentAccountId = 42, sharedOnly = true))
-        assertFalse(shouldIncludeInstalledSteamApp(listOf(42), currentAccountId = 42, sharedOnly = true))
-        assertFalse(shouldIncludeInstalledSteamApp(emptyList(), currentAccountId = 42, sharedOnly = true))
-        assertFalse(shouldIncludeInstalledSteamApp(emptyList(), currentAccountId = 0, sharedOnly = true))
+    fun disablingSharedFilterExcludesOnlyKnownOtherAccountOwnership() {
+        assertTrue(shouldIncludeInstalledSteamApp(listOf(42), currentAccountId = 42, includeShared = false))
+        assertTrue(shouldIncludeInstalledSteamApp(emptyList(), currentAccountId = 42, includeShared = false))
+        assertTrue(shouldIncludeInstalledSteamApp(listOf(7), currentAccountId = 0, includeShared = false))
+        assertFalse(shouldIncludeInstalledSteamApp(listOf(7), currentAccountId = 42, includeShared = false))
     }
 
     @Test

@@ -1,6 +1,7 @@
 package app.gamenative.ui.model
 
 import app.gamenative.data.SteamApp
+import app.gamenative.enums.AppType
 import app.gamenative.ui.enums.AppFilter
 import java.util.EnumSet
 
@@ -10,5 +11,7 @@ internal fun filterSteamAppsByType(
     filters: EnumSet<AppFilter>,
 ): List<SteamApp> {
     val selectedTypes = AppFilter.getAppType(filters)
-    return apps.filter { app -> app.type in selectedTypes }
+    return apps.filter { app ->
+        app.type in selectedTypes || (!app.receivedPICS && app.type == AppType.invalid)
+    }
 }

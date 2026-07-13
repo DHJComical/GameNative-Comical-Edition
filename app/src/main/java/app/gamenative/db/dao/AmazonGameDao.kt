@@ -20,6 +20,10 @@ interface AmazonGameDao {
     @Query("SELECT * FROM amazon_games WHERE product_id = :productId")
     suspend fun getByProductId(productId: String): AmazonGame?
 
+    /** Marks an existing catalog row installed without replacing its richer metadata. */
+    @Query("UPDATE amazon_games SET is_installed = 1, install_path = :installPath WHERE product_id = :productId")
+    suspend fun updateDiscoveredInstallation(productId: String, installPath: String)
+
     @Query("SELECT * FROM amazon_games WHERE app_id = :appId")
     suspend fun getByAppId(appId: Int): AmazonGame?
 

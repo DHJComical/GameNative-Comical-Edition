@@ -75,9 +75,9 @@ internal fun sanitizeInstalledLibraryFilters(filters: EnumSet<AppFilter>): EnumS
 internal fun shouldIncludeInstalledSteamApp(
     ownerAccountIds: List<Int>,
     currentAccountId: Int,
-    sharedOnly: Boolean,
-): Boolean = !sharedOnly || ownerAccountIds.isNotEmpty() &&
-    currentAccountId != 0 && !ownerAccountIds.contains(currentAccountId)
+    includeShared: Boolean,
+): Boolean = includeShared || currentAccountId == 0 ||
+    ownerAccountIds.isEmpty() || ownerAccountIds.contains(currentAccountId)
 
 internal fun shouldRefreshInstalledLibraryForEvent(source: GameSource): Boolean =
     source == GameSource.CUSTOM_GAME
@@ -582,7 +582,7 @@ class LibraryViewModel @Inject constructor(
                     shouldIncludeInstalledSteamApp(
                         ownerAccountIds = item.ownerAccountId,
                         currentAccountId = PrefManager.steamUserAccountId,
-                        sharedOnly = currentState.appInfoSortType.contains(AppFilter.SHARED),
+                        includeShared = currentState.appInfoSortType.contains(AppFilter.SHARED),
                     )
                 }
                 .filter { item ->

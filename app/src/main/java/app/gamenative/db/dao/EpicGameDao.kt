@@ -57,6 +57,10 @@ interface EpicGameDao {
     @Query("SELECT * FROM epic_games WHERE app_name = :appName")
     suspend fun getByAppName(appName: String): EpicGame?
 
+    /** Marks an existing catalog row installed without replacing its richer metadata. */
+    @Query("UPDATE epic_games SET is_installed = 1, install_path = :installPath WHERE app_name = :appName")
+    suspend fun updateDiscoveredInstallation(appName: String, installPath: String)
+
     // Note: '89efe5924d3d467c839449ab6ab52e7f' and 'ue' are the namespaces for Unreal Engine software/assets.
     @Query("SELECT * FROM epic_games WHERE is_dlc = 0 AND namespace != 'ue' AND namespace != '89efe5924d3d467c839449ab6ab52e7f' ORDER BY title ASC")
     fun getAll(): Flow<List<EpicGame>>

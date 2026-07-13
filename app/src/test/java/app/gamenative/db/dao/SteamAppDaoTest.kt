@@ -13,6 +13,10 @@ import `in`.dragonbra.javasteam.enums.ELicenseFlags
 import `in`.dragonbra.javasteam.enums.ELicenseType
 import `in`.dragonbra.javasteam.enums.EPaymentMethod
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -207,7 +211,7 @@ class SteamAppDaoTest {
     }
 
     @Test
-    fun `installed flow excludes invalid apps but keeps completed app without active license`() = runBlocking {
+    fun `installed flow keeps truthful metadata stubs but excludes Spacewar`() = runBlocking {
         appDao.insert(makeApp(id = 1, packageId = 101))
         appDao.insert(makeApp(id = 480, packageId = 102))
         appDao.insert(makeApp(id = 2, packageId = INVALID_PKG_ID))
@@ -218,6 +222,25 @@ class SteamAppDaoTest {
 
         val apps = appDao.observeInstalledGames().first()
 
-        assertEquals(listOf(1), apps.map { it.id })
+        assertEquals(listOf(1, 2, 3), apps.map { it.id })
+    }
+
+    @Test
+    fun `installed flow emits again when reconciliation inserts a metadata stub`() = runBlocking {
+        db.appInfoDao().insert(AppInfo(id = 77, isDownloaded = true))
+        val firstEmission = CompletableDeferred<Unit>()
+        val emissions = mutableListOf<List<SteamApp>>()
+        val collection = launch {
+            appDao.observeInstalledGames().take(2).collect { apps ->
+                emissions += apps
+                if (emissions.size == 1) firstEmission.complete(Unit)
+            }
+        }
+        firstEmission.await()
+
+        appDao.insert(SteamApp(id = 77, name = "Manifest game", receivedPICS = false))
+        collection.join()
+
+        assertEquals(listOf(emptyList(), listOf(77)), emissions.map { apps -> apps.map(SteamApp::id) })
     }
 }

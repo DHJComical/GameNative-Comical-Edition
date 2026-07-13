@@ -153,19 +153,17 @@ interface SteamAppDao {
     @Query(
         "SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id " +
             "WHERE app_info.is_downloaded = 1 AND steam_app.id != 480 " +
-            "AND steam_app.package_id != :invalidPkgId AND steam_app.type != 0 " +
             "ORDER BY LOWER(steam_app.name), steam_app.id",
     )
-    suspend fun getInstalledGames(invalidPkgId: Int = INVALID_PKG_ID): List<SteamApp>
+    suspend fun getInstalledGames(): List<SteamApp>
 
     /** Observes installed Steam apps for installed-only library surfaces. */
     @Query(
         "SELECT steam_app.* FROM steam_app INNER JOIN app_info ON steam_app.id = app_info.id " +
             "WHERE app_info.is_downloaded = 1 AND steam_app.id != 480 " +
-            "AND steam_app.package_id != :invalidPkgId AND steam_app.type != 0 " +
             "ORDER BY LOWER(steam_app.name), steam_app.id",
     )
-    fun observeInstalledGames(invalidPkgId: Int = INVALID_PKG_ID): Flow<List<SteamApp>>
+    fun observeInstalledGames(): Flow<List<SteamApp>>
 
     @Query("SELECT * FROM steam_app AS app WHERE dlc_for_app_id = :appId AND depots <> '{}' AND " +
             " EXISTS (" +

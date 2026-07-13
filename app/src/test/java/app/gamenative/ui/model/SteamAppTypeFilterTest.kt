@@ -37,5 +37,23 @@ class SteamAppTypeFilterTest {
         assertEquals(listOf(2), after.map(SteamApp::id))
     }
 
+    @Test
+    fun `keeps an installed manifest stub before PICS metadata arrives`() {
+        val stub = SteamApp(id = 7, name = "Offline game", type = AppType.invalid, receivedPICS = false)
+
+        val result = filterSteamAppsByType(listOf(stub), EnumSet.of(AppFilter.GAME))
+
+        assertEquals(listOf(7), result.map(SteamApp::id))
+    }
+
+    @Test
+    fun `does not treat a PICS invalid type as a game`() {
+        val invalid = SteamApp(id = 8, type = AppType.invalid, receivedPICS = true)
+
+        val result = filterSteamAppsByType(listOf(invalid), EnumSet.of(AppFilter.GAME))
+
+        assertEquals(emptyList<SteamApp>(), result)
+    }
+
     private fun steamApp(id: Int, type: AppType) = SteamApp(id = id, type = type)
 }

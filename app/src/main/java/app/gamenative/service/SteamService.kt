@@ -2606,6 +2606,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                         downloadedDepots = updatedDownloadedDepots.sorted(),
                         dlcDepots = updatedDlcDepots.sorted(),
                         branch = branch,
+                        managedInstallPath = File(appDirPath).canonicalPath,
                     ),
                 )
             } else {
@@ -2616,6 +2617,7 @@ class SteamService : Service(), IChallengeUrlChanged {
                         downloadedDepots = entitledDepotIds.sorted(),
                         dlcDepots = selectedDlcAppIds.sorted(),
                         branch = branch,
+                        managedInstallPath = File(appDirPath).canonicalPath,
                     ),
                 )
             }

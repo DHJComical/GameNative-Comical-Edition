@@ -75,6 +75,7 @@ import app.gamenative.data.library.GameLibraryOperations
 import app.gamenative.data.library.GameLibraryRemovalSummary
 import app.gamenative.data.library.GameLibraryRepository
 import app.gamenative.data.library.GameLibrarySnapshot
+import app.gamenative.data.library.InstalledLibrarySynchronizer
 import app.gamenative.data.library.LibraryFileProgress
 import app.gamenative.data.library.customLibraryDisplayName
 import app.gamenative.ui.component.AppTabDensity
@@ -134,16 +135,19 @@ class GameLibrariesViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: GameLibraryRepository,
     private val operations: GameLibraryOperations,
+    private val installedLibrarySynchronizer: InstalledLibrarySynchronizer,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(GameLibrariesUiState())
     val state: StateFlow<GameLibrariesUiState> = mutableState.asStateFlow()
 
     fun load() = refresh(recover = true)
 
-    fun addLibrary(source: GameSource, rootPath: String) = mutate { repository.addLibrary(source, rootPath) }
+    fun addLibrary(source: GameSource, rootPath: String) = mutate {
+        addRegisteredLibrary(repository, installedLibrarySynchronizer, source, rootPath)
+    }
 
     fun setDefault(source: GameSource, libraryId: String) = mutate {
-        repository.setDefaultLibrary(source, libraryId)
+        setDefaultRegisteredLibrary(repository, source, libraryId)
     }
 
     fun requestRemoval(library: GameLibrary) {
@@ -173,7 +177,9 @@ class GameLibrariesViewModel @Inject constructor(
         viewModelScope.launch {
             mutableState.update { it.copy(activeOperation = true) }
             try {
-                val result = operations.removeLibraryAndGames(request.library.id)
+                val result = installedLibrarySynchronizer.withSynchronizationIdle {
+                    operations.removeLibraryAndGames(request.library.id)
+                }
                 refreshState(recover = false)
                 if (result.removed) {
                     mutableState.update { it.copy(removalRequest = null, activeOperation = false) }
@@ -297,6 +303,38 @@ class GameLibrariesViewModel @Inject constructor(
         )
     }
 }
+
+/** Registers a library and waits for its installed games to be reconciled before UI refresh. */
+internal suspend fun addRegisteredLibrary(
+    repository: GameLibraryRepository,
+    synchronizer: InstalledLibrarySynchronizer,
+    source: GameSource,
+    rootPath: String,
+): GameLibrarySnapshot {
+    val snapshot = repository.addLibrary(source, rootPath)
+    try {
+        val synchronization = synchronizer.synchronizeAll()
+        synchronization.stores.filter { it.failure != null }.forEach { store ->
+            Timber.w(
+                "Library was added but %s installed-library synchronization failed: %s",
+                store.source,
+                store.failure?.message,
+            )
+        }
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (exception: Exception) {
+        Timber.e(exception, "Library was added but installed-library synchronization failed")
+    }
+    return snapshot
+}
+
+/** Changes only the install destination preference; installed-game discovery is unaffected. */
+internal suspend fun setDefaultRegisteredLibrary(
+    repository: GameLibraryRepository,
+    source: GameSource,
+    libraryId: String,
+): GameLibrarySnapshot = repository.setDefaultLibrary(source, libraryId)
 
 @Composable
 fun GameLibrariesScreen(
