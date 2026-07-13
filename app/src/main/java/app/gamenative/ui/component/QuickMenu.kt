@@ -14,10 +14,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
@@ -39,6 +37,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +50,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Settings
@@ -83,7 +83,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.gamenative.PrefManager
@@ -97,7 +96,9 @@ import com.winlator.container.Container
 import com.winlator.renderer.GLRenderer
 import com.winlator.renderer.VulkanRenderer
 import com.winlator.winhandler.ProcessInfo
+import java.util.Locale
 import kotlinx.coroutines.delay
+import timber.log.Timber
 import kotlin.math.roundToInt
 
 object QuickMenuAction {
@@ -450,10 +451,11 @@ fun QuickMenu(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             val tabScrollState = rememberScrollState()
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .verticalScroll(tabScrollState),
+                             Column(
+                                 modifier = Modifier
+                                     .weight(1f)
+                                     .verticalScroll(tabScrollState)
+                                     .selectableGroup(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
@@ -685,7 +687,7 @@ fun QuickMenu(
 
     LaunchedEffect(isVisible) {
         if (isVisible) {
-            repeat(3) {
+            repeat(3) { attempt ->
                 try {
                     when (selectedTab) {
                         QuickMenuTab.HUD -> hudItemFocusRequester.requestFocus()
@@ -695,8 +697,14 @@ fun QuickMenu(
                         else -> controllerItemFocusRequester.requestFocus()
                     }
                     return@LaunchedEffect
-                } catch (_: Exception) {
+                } catch (error: IllegalStateException) {
                     delay(80)
+                    if (attempt == 2) {
+                        Timber.w(
+                            error,
+                            "Quick Menu initial focus target is not ready after 3 attempts (tab=$selectedTab)",
+                        )
+                    }
                 }
             }
         }
@@ -833,7 +841,9 @@ private fun PerformanceHudQuickMenuTab(
         )
 
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             PerformanceHudPreset.values().forEach { preset ->
@@ -867,7 +877,9 @@ private fun PerformanceHudQuickMenuTab(
         )
 
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             listOf(
@@ -1123,7 +1135,9 @@ private fun LsfgQuickMenuTab(
             title = stringResource(R.string.lsfg_multiplier),
         )
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier
+                .padding(horizontal = 8.dp)
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             listOf(0, 2, 3, 4).forEach { value ->
@@ -1150,15 +1164,15 @@ private fun LsfgQuickMenuTab(
                 QuickMenuAdjustmentRow(
                     title = stringResource(R.string.lsfg_flow_scale),
                     subtitle = stringResource(R.string.lsfg_flow_scale_desc),
-                    valueText = String.format(java.util.Locale.US, "%.2f", flowScale),
+                    valueText = String.format(Locale.US, "%.2f", flowScale),
                     progress = (flowScale - 0.25f) / 0.75f, // 0.25..1.0 → 0..1
                     onDecrease = {
                         val next = (flowScale - 0.05f).coerceIn(0.25f, 1.0f)
-                        onFlowScaleChanged(String.format(java.util.Locale.US, "%.2f", next).toFloat())
+                        onFlowScaleChanged(String.format(Locale.US, "%.2f", next).toFloat())
                     },
                     onIncrease = {
                         val next = (flowScale + 0.05f).coerceIn(0.25f, 1.0f)
-                        onFlowScaleChanged(String.format(java.util.Locale.US, "%.2f", next).toFloat())
+                        onFlowScaleChanged(String.format(Locale.US, "%.2f", next).toFloat())
                     },
                     accentColor = accentColor,
                 )
@@ -1249,7 +1263,7 @@ private fun QuickMenuCloseButton(
 }
 
 @Composable
-private fun QuickMenuTabButton(
+internal fun QuickMenuTabButton(
     icon: ImageVector,
     contentDescriptionResId: Int,
     selected: Boolean,
@@ -1290,6 +1304,7 @@ private fun QuickMenuTabButton(
                 selected = selected,
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Tab,
                 onClick = onSelected,
             )
             .focusable(interactionSource = interactionSource),
@@ -1374,7 +1389,7 @@ private fun QuickMenuRailActionButton(
 }
 
 @Composable
-private fun QuickMenuChoiceChip(
+internal fun QuickMenuChoiceChip(
     text: String,
     selected: Boolean,
     accentColor: Color,
@@ -1423,6 +1438,7 @@ private fun QuickMenuChoiceChip(
                 selected = selected,
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.RadioButton,
                 onClick = onClick,
             )
             .focusable(interactionSource = interactionSource)
@@ -1439,7 +1455,7 @@ private fun QuickMenuChoiceChip(
 }
 
 @Composable
-private fun QuickMenuAdjustmentRow(
+internal fun QuickMenuAdjustmentRow(
     title: String,
     valueText: String,
     progress: Float,
@@ -1452,136 +1468,86 @@ private fun QuickMenuAdjustmentRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(14.dp)
     var isAdjustmentLocked by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(shape)
-            .background(
-                if (isFocused) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.16f),
-                            accentColor.copy(alpha = 0.08f),
-                        ),
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f),
-                        ),
-                    )
-                },
-            )
-            .then(
-                if (isFocused && !isAdjustmentLocked) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = accentColor.copy(alpha = 0.7f),
-                        shape = shape,
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .onFocusChanged {
-                if (!it.isFocused) {
-                    isAdjustmentLocked = false
-                }
-            }
-            .focusable(interactionSource = interactionSource)
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && isFocused) {
-                    when {
-                        keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_A -> {
-                            isAdjustmentLocked = !isAdjustmentLocked
-                            true
-                        }
-
-                        isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_B -> {
-                            isAdjustmentLocked = false
-                            true
-                        }
-
-                        isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            onDecrease()
-                            true
-                        }
-
-                        isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            onIncrease()
-                            true
-                        }
-
-                        else -> false
-                    }
-                } else {
-                    false
-                }
-            }
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {},
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .fillMaxWidth(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = valueText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (isFocused) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (isAdjustmentLocked) {
+        AppMenuRow(
+            headline = title,
+            supporting = subtitle,
+            behavior = AppMenuRowBehavior.Content(
+                interactionModifier = Modifier
+                    .onFocusChanged {
+                        if (!it.isFocused) {
+                            isAdjustmentLocked = false
+                        }
+                    }
+                    .focusable(interactionSource = interactionSource)
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && isFocused) {
+                            when {
+                                keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_A -> {
+                                    isAdjustmentLocked = !isAdjustmentLocked
+                                    true
+                                }
+
+                                isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_BUTTON_B -> {
+                                    isAdjustmentLocked = false
+                                    true
+                                }
+
+                                isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                    onDecrease()
+                                    true
+                                }
+
+                                isAdjustmentLocked && keyEvent.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                    onIncrease()
+                                    true
+                                }
+
+                                else -> false
+                            }
+                        } else {
+                            false
+                        }
+                    },
+            ),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            trailing = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
-                        text = "●",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = valueText,
+                        style = MaterialTheme.typography.labelLarge,
                         color = accentColor,
                     )
+                    if (isAdjustmentLocked) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
                 }
-            }
-        }
-
-        if (subtitle != null) {
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
+            },
+            variant = AppMenuRowVariant.Default,
+            interactionColor = accentColor,
+            focusRequester = focusRequester,
+            interactionSource = interactionSource,
+            scaleOnFocus = false,
+        )
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(36.dp),
+                .height(46.dp)
+                .padding(start = 24.dp, end = 24.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -1690,7 +1656,7 @@ private fun QuickMenuAdjustmentButton(
 }
 
 @Composable
-private fun QuickMenuToggleRow(
+internal fun QuickMenuToggleRow(
     title: String,
     enabled: Boolean,
     onToggle: () -> Unit,
@@ -1699,82 +1665,22 @@ private fun QuickMenuToggleRow(
     subtitle: String? = null,
     focusRequester: FocusRequester? = null,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (isFocused) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.16f),
-                            accentColor.copy(alpha = 0.08f),
-                        ),
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f),
-                        ),
-                    )
-                },
-            )
-            .then(
-                if (isFocused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = accentColor.copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(14.dp),
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onToggle,
-            )
-            .focusable(interactionSource = interactionSource)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        QuickMenuSwitch(
-            enabled = enabled,
-            accentColor = accentColor,
-        )
-    }
+    AppMenuRow(
+        headline = title,
+        supporting = subtitle,
+        behavior = AppMenuRowBehavior.Toggle(
+            checked = enabled,
+            onCheckedChange = { onToggle() },
+        ),
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        trailing = {
+            QuickMenuSwitch(enabled = enabled, accentColor = accentColor)
+        },
+        variant = AppMenuRowVariant.Default,
+        interactionColor = accentColor,
+        focusRequester = focusRequester,
+        scaleOnFocus = false,
+    )
 }
 
 @Composable
@@ -1806,9 +1712,8 @@ private fun QuickMenuSwitch(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun QuickMenuProcessRow(
+internal fun QuickMenuProcessRow(
     title: String,
     subtitle: String,
     accentColor: Color,
@@ -1817,101 +1722,21 @@ private fun QuickMenuProcessRow(
     focusRequester: FocusRequester? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(14.dp)
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp)
-            .clip(shape)
-            .background(
-                if (isFocused) {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            accentColor.copy(alpha = 0.14f),
-                            accentColor.copy(alpha = 0.06f),
-                        ),
-                    )
-                } else {
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f),
-                        ),
-                    )
-                },
-            )
-            .then(
-                if (isFocused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = accentColor.copy(alpha = 0.8f),
-                        shape = shape,
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .focusable(interactionSource = interactionSource)
-            .onPreviewKeyEvent { keyEvent ->
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && isFocused) {
-                    when (keyEvent.nativeKeyEvent.keyCode) {
-                        KeyEvent.KEYCODE_BUTTON_A,
-                        KeyEvent.KEYCODE_DPAD_CENTER,
-                        KeyEvent.KEYCODE_ENTER -> {
-                            onEndProcess()
-                            true
-                        }
-
-                        else -> false
-                    }
-                } else {
-                    false
-                }
-            }
-            .selectable(
-                selected = isFocused,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onEndProcess,
-            )
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (isFocused) accentColor else MaterialTheme.colorScheme.onSurface,
-                fontWeight = if (isFocused) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .basicMarquee(iterations = Int.MAX_VALUE),
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isFocused) accentColor.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    AppMenuRow(
+        headline = title,
+        supporting = subtitle,
+        behavior = AppMenuRowBehavior.Command(onEndProcess),
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        variant = AppMenuRowVariant.Default,
+        interactionColor = accentColor,
+        focusRequester = focusRequester,
+        interactionSource = interactionSource,
+        scaleOnFocus = false,
+    )
 }
 
 @Composable
-private fun QuickMenuItemRow(
+internal fun QuickMenuItemRow(
     item: QuickMenuItem,
     isActive: Boolean = false,
     onClick: () -> Unit,
@@ -1931,114 +1756,71 @@ private fun QuickMenuItemRow(
     }
 
     val disabledAlpha = 0.4f
-    val shape = RoundedCornerShape(12.dp)
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .then(
-                if (isFocused && isEnabled) {
-                    Modifier.background(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                accentColor.copy(alpha = 0.15f),
-                                accentColor.copy(alpha = 0.05f),
-                            ),
-                        ),
-                    )
-                } else {
-                    Modifier
-                }
-            )
-            .then(
-                if (isEnabled) {
-                    Modifier.focusRing(interactionSource, shape, width = 2.dp)
-                } else {
-                    Modifier
-                }
-            )
-            .then(
-                if (focusRequester != null) {
-                    Modifier.focusRequester(focusRequester)
-                } else {
-                    Modifier
-                }
-            )
-            .selectable(
-                selected = isFocused,
-                enabled = isEnabled,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
-            .focusable(
-                enabled = isEnabled,
-                interactionSource = interactionSource,
-            )
-            .padding(horizontal = 12.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .then(
-                    if (isActive) {
-                        Modifier.border(BorderStroke(2.dp, accentColor), CircleShape)
-                    } else Modifier
-                )
-                .clip(CircleShape)
-                .background(
-                    when {
-                        !isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        isFocused || isActive -> accentColor.copy(alpha = 0.2f)
-                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    },
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = null,
-                tint = when {
-                    !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = disabledAlpha)
-                    isFocused || isActive -> accentColor
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(22.dp),
-            )
-        }
-
-        Text(
-            text = stringResource(item.labelResId),
-            style = MaterialTheme.typography.bodyLarge,
-            color = when {
-                !isEnabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = disabledAlpha)
-                isFocused -> accentColor
-                else -> MaterialTheme.colorScheme.onSurface
-            },
-            modifier = Modifier.weight(1f),
-        )
-
-        if (secondaryIcon != null && onSecondaryClick != null) {
+    AppMenuRow(
+        headline = stringResource(item.labelResId),
+        behavior = AppMenuRowBehavior.Command(onClick),
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        leading = {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(40.dp)
+                    .then(
+                        if (isActive) {
+                            Modifier.border(BorderStroke(2.dp, accentColor), CircleShape)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .clickable(role = Role.Button, onClick = onSecondaryClick),
+                    .background(
+                        when {
+                            !isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            isFocused || isActive -> accentColor.copy(alpha = 0.2f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        },
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = secondaryIcon,
-                    contentDescription = stringResource(R.string.gesture_settings_title),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
+                    imageVector = item.icon,
+                    contentDescription = null,
+                    tint = when {
+                        !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = disabledAlpha)
+                        isFocused || isActive -> accentColor
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(22.dp),
                 )
             }
-        }
-    }
+        },
+        trailing = if (secondaryIcon != null && onSecondaryClick != null) {
+            {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .clickable(role = Role.Button, onClick = onSecondaryClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = secondaryIcon,
+                        contentDescription = stringResource(R.string.gesture_settings_title),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        } else {
+            null
+        },
+        enabled = isEnabled,
+        variant = AppMenuRowVariant.Default,
+        interactionColor = accentColor,
+        focusRequester = focusRequester,
+        interactionSource = interactionSource,
+        scaleOnFocus = false,
+    )
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF000000)
