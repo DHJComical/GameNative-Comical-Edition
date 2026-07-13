@@ -54,13 +54,16 @@ import java.util.EnumSet
 import javax.inject.Inject
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -70,6 +73,13 @@ import timber.log.Timber
 
 private const val PLAYABLE_FPS_THRESHOLD = 30
 private const val PROVEN_RUNS_THRESHOLD = 5
+
+internal fun displayedLibraryTotal(gameCount: Int, includesRecommendation: Boolean): Int =
+    gameCount + if (includesRecommendation) 1 else 0
+
+internal fun shouldShowBlockingLibraryLoading(initialLoadComplete: Boolean): Boolean =
+    !initialLoadComplete
+
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -88,17 +98,18 @@ class LibraryViewModel @Inject constructor(
     var listState: LazyGridState by mutableStateOf(LazyGridState(0, 0))
 
     private val onInstallStatusChanged: (AndroidEvent.LibraryInstallStatusChanged) -> Unit = {
-        onFilterApps(paginationCurrentPage)
+        onFilterApps(paginationCurrentPage, FilterCommitKind.STRUCTURAL)
     }
 
     private val onCustomGameImagesFetched: (AndroidEvent.CustomGameImagesFetched) -> Unit = {
         // Increment refresh counter and refresh the library list to pick up newly fetched images
         _state.update { it.copy(imageRefreshCounter = it.imageRefreshCounter + 1) }
-        onFilterApps(paginationCurrentPage)
+        onFilterApps(paginationCurrentPage, FilterCommitKind.METADATA)
     }
 
     private val onRecommendationToggleChanged: (AndroidEvent.RecommendationToggleChanged) -> Unit = {
-        onFilterApps(paginationCurrentPage)
+        onLibraryUserInteraction()
+        onFilterApps(paginationCurrentPage, FilterCommitKind.EXPLICIT)
     }
 
     // How many items loaded on one page of results
@@ -112,11 +123,15 @@ class LibraryViewModel @Inject constructor(
     private var amazonGameList: List<AmazonGame> = emptyList()
     private var playHistoryByAppId: Map<String, Long> = emptyMap()
 
+    private val loadCoordinator = LibraryLoadCoordinator()
+    private val filterJobLock = Any()
+    private var filterJob: Job? = null
+
     // Track if this is the first load to apply minimum load time
     private var isFirstLoad = true
 
-    // Cached recommendation (fetched once at startup)
-    @Volatile private var cachedRecommendation: RecommendedGame? = null
+    // Fixed recommendation snapshot for this library session.
+    private val cachedRecommendation: RecommendedGame? = RecommendationRepository.getCachedRecommendation()
 
     // Track debounce job for search
     private var searchDebounceJob: Job? = null
@@ -162,72 +177,103 @@ class LibraryViewModel @Inject constructor(
             }
             // Re-run filtering/sorting now that stats are available, if anything depends on them.
             if (usesStats(_state.value)) {
-                onFilterApps(paginationCurrentPage)
+                onFilterApps(paginationCurrentPage, FilterCommitKind.STRUCTURAL)
             }
         }
 
         @OptIn(ExperimentalCoroutinesApi::class)
         viewModelScope.launch(Dispatchers.IO) {
-            // Re-create the underlying DAO Flow whenever the EXPIRED filter is toggled,
-            // so apps with Expired or missing licenses are surfaced/hidden accordingly.
             _state
                 .map { it.appInfoSortType.contains(AppFilter.EXPIRED) }
                 .distinctUntilChanged()
                 .flatMapLatest { includeExpired ->
                     steamAppDao.getAllOwnedApps(includeExpired = includeExpired)
                 }
+                .catch { error ->
+                    Timber.tag("LibraryViewModel").e(error, "Steam library source failed")
+                    onLocalSourceEmission(LibraryLoadSource.STEAM)
+                }
                 .collect { apps ->
                     Timber.tag("LibraryViewModel").d("Collecting ${apps.size} apps")
                     // Check if the list has actually changed before triggering a re-filter
-                    if (appList != apps) {
+                    val hasChanges = appList != apps
+                    if (hasChanges) {
                         appList = apps
-                        onFilterApps(paginationCurrentPage)
+                    }
+                    if (shouldProcessLibrarySourceEmission(hasChanges, loadCoordinator.isInitialSnapshotReady)) {
+                        onLocalSourceEmission(LibraryLoadSource.STEAM)
                     }
                 }
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            libraryPlayHistoryDao.getAll().collect { entries ->
+            libraryPlayHistoryDao.getAll()
+                .catch { error ->
+                    Timber.tag("LibraryViewModel").e(error, "Play history source failed")
+                    onLocalSourceEmission(LibraryLoadSource.PLAY_HISTORY)
+                }
+                .collect { entries ->
                 val playHistory = entries.associate { it.appId to it.lastPlayed }
-                if (playHistoryByAppId != playHistory) {
+                val hasChanges = playHistoryByAppId != playHistory
+                if (hasChanges) {
                     playHistoryByAppId = playHistory
-                    onFilterApps(paginationCurrentPage)
+                }
+                if (shouldProcessLibrarySourceEmission(hasChanges, loadCoordinator.isInitialSnapshotReady)) {
+                    onLocalSourceEmission(LibraryLoadSource.PLAY_HISTORY)
                 }
             }
         }
 
         // Collect GOG games
         viewModelScope.launch(Dispatchers.IO) {
-            gogGameDao.getAll().collect { games ->
+            gogGameDao.getAll()
+                .catch { error ->
+                    Timber.tag("LibraryViewModel").e(error, "GOG library source failed")
+                    onLocalSourceEmission(LibraryLoadSource.GOG)
+                }
+                .collect { games ->
                 Timber.tag("LibraryViewModel").d("Collecting ${games.size} GOG games")
                 // Check if the list has actually changed before triggering a re-filter
-                if (gogGameList != games) {
-                    gogGameList = games
-                    onFilterApps(paginationCurrentPage)
-                }
+                    val hasChanges = gogGameList != games
+                    if (hasChanges) {
+                        gogGameList = games
+                    }
+                    if (shouldProcessLibrarySourceEmission(hasChanges, loadCoordinator.isInitialSnapshotReady)) {
+                        onLocalSourceEmission(LibraryLoadSource.GOG)
+                    }
             }
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            epicGameDao.getAll().collect { games ->
+            epicGameDao.getAll()
+                .catch { error ->
+                    Timber.tag("LibraryViewModel").e(error, "Epic library source failed")
+                    onLocalSourceEmission(LibraryLoadSource.EPIC)
+                }
+                .collect { games ->
                 Timber.tag("LibraryViewModel").d("Collecting ${games.size} Epic games")
 
                 val hasChanges = epicGameList.size != games.size || epicGameList != games
                 epicGameList = games
 
-                if (hasChanges) {
-                    onFilterApps(paginationCurrentPage)
+                if (shouldProcessLibrarySourceEmission(hasChanges, loadCoordinator.isInitialSnapshotReady)) {
+                    onLocalSourceEmission(LibraryLoadSource.EPIC)
                 }
             }
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            amazonGameDao.getAll().collect { games ->
+            amazonGameDao.getAll()
+                .catch { error ->
+                    Timber.tag("LibraryViewModel").e(error, "Amazon library source failed")
+                    onLocalSourceEmission(LibraryLoadSource.AMAZON)
+                }
+                .collect { games ->
                 Timber.tag("LibraryViewModel").d("Collecting ${games.size} Amazon games")
                 val hasChanges = amazonGameList.size != games.size || amazonGameList != games
                 amazonGameList = games
-                if (hasChanges) {
-                    onFilterApps(paginationCurrentPage)
+                if (shouldProcessLibrarySourceEmission(hasChanges, loadCoordinator.isInitialSnapshotReady)) {
+                    onLocalSourceEmission(LibraryLoadSource.AMAZON)
                 }
             }
         }
@@ -237,19 +283,37 @@ class LibraryViewModel @Inject constructor(
         PluviaApp.events.on<AndroidEvent.RecommendationToggleChanged, Unit>(onRecommendationToggleChanged)
 
         viewModelScope.launch(Dispatchers.IO) {
-            cachedRecommendation = RecommendationRepository.getCurrentRecommendation(context)
-            if (cachedRecommendation != null) {
-                onFilterApps(paginationCurrentPage)
-            }
+            RecommendationRepository.refreshCacheIfStale()
         }
     }
 
     override fun onCleared() {
         searchDebounceJob?.cancel()
+        synchronized(filterJobLock) {
+            filterJob?.cancel()
+        }
         PluviaApp.events.off<AndroidEvent.LibraryInstallStatusChanged, Unit>(onInstallStatusChanged)
         PluviaApp.events.off<AndroidEvent.CustomGameImagesFetched, Unit>(onCustomGameImagesFetched)
         PluviaApp.events.off<AndroidEvent.RecommendationToggleChanged, Unit>(onRecommendationToggleChanged)
         super.onCleared()
+    }
+
+    private fun onLocalSourceEmission(source: LibraryLoadSource) {
+        val initialSnapshotBecameReady = loadCoordinator.markReady(source)
+        if (initialSnapshotBecameReady || _state.value.initialLoadComplete) {
+            onFilterApps(
+                paginationPage = paginationCurrentPage,
+                commitKind = FilterCommitKind.STRUCTURAL,
+            )
+        }
+    }
+
+    fun consumeViewportReset(token: Long): Boolean = loadCoordinator.consumeViewportReset(token)
+
+    fun isViewportResetPending(token: Long): Boolean = loadCoordinator.isViewportResetPending(token)
+
+    fun onLibraryUserInteraction() {
+        loadCoordinator.stopBootstrapViewportStabilization()
     }
 
     fun onModalBottomSheet(value: Boolean) {
@@ -264,6 +328,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun onSourceToggle(source: GameSource) {
+        onLibraryUserInteraction()
         val current = _state.value
         when (source) {
             GameSource.STEAM -> {
@@ -293,13 +358,14 @@ class LibraryViewModel @Inject constructor(
                 _state.update { it.copy(showAmazonInLibrary = newValue) }
             }
         }
-        onFilterApps(paginationCurrentPage)
+        onFilterApps(paginationCurrentPage, FilterCommitKind.EXPLICIT)
     }
 
     fun onSortOptionChanged(sortOption: SortOption) {
+        onLibraryUserInteraction()
         PrefManager.librarySortOption = sortOption
         _state.update { it.copy(currentSortOption = sortOption) }
-        onFilterApps()
+        onFilterApps(commitKind = FilterCommitKind.EXPLICIT)
     }
 
     fun onOptionsPanelToggle(isOpen: Boolean) {
@@ -307,29 +373,33 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun onTabChanged(tab: LibraryTab) {
+        onLibraryUserInteraction()
         _state.update { it.copy(currentTab = tab) }
-        onFilterApps(0) // Reset to first page and refresh
+        onFilterApps(0, FilterCommitKind.EXPLICIT) // Reset to first page and refresh
     }
 
     fun onNextTab() {
+        onLibraryUserInteraction()
         _state.update { currentState ->
             val nextTab = currentState.currentTab.next()
             Timber.tag("LibraryViewModel").d("Tab next via bumper: ${currentState.currentTab} -> $nextTab")
             currentState.copy(currentTab = nextTab)
         }
-        onFilterApps(0)
+        onFilterApps(0, FilterCommitKind.EXPLICIT)
     }
 
     fun onPreviousTab() {
+        onLibraryUserInteraction()
         _state.update { currentState ->
             val previousTab = currentState.currentTab.previous()
             Timber.tag("LibraryViewModel").d("Tab previous via bumper: ${currentState.currentTab} -> $previousTab")
             currentState.copy(currentTab = previousTab)
         }
-        onFilterApps(0)
+        onFilterApps(0, FilterCommitKind.EXPLICIT)
     }
 
     fun onSearchQuery(value: String) {
+        onLibraryUserInteraction()
         // Update UI immediately for responsive typing
         _state.update { it.copy(searchQuery = value) }
 
@@ -340,12 +410,13 @@ class LibraryViewModel @Inject constructor(
         searchDebounceJob = viewModelScope.launch {
             delay(SEARCH_DEBOUNCE_MS)
             // Only trigger filter after user stops typing
-            onFilterApps()
+            onFilterApps(commitKind = FilterCommitKind.EXPLICIT)
         }
     }
 
     // TODO: include other sort types
     fun onFilterChanged(value: AppFilter) {
+        onLibraryUserInteraction()
         _state.update { currentState ->
             val updatedFilter = EnumSet.copyOf(currentState.appInfoSortType)
 
@@ -360,17 +431,18 @@ class LibraryViewModel @Inject constructor(
             currentState.copy(appInfoSortType = updatedFilter)
         }
 
-        onFilterApps()
+        onFilterApps(commitKind = FilterCommitKind.EXPLICIT)
     }
 
     fun onPageChange(pageIncrement: Int) {
         // Amount to change by
         var toPage = max(0, paginationCurrentPage + pageIncrement)
         toPage = min(toPage, lastPageInCurrentFilter)
-        onFilterApps(toPage)
+        onFilterApps(toPage, FilterCommitKind.PAGINATION)
     }
 
     fun onRefresh() {
+        onLibraryUserInteraction()
         viewModelScope.launch {
             _state.update { it.copy(isRefreshing = true) }
 
@@ -397,7 +469,7 @@ class LibraryViewModel @Inject constructor(
             } catch (e: Exception) {
                 Timber.tag("LibraryViewModel").e(e, "Failed to refresh owned games from server")
             } finally {
-                onFilterApps(0).join()
+                onFilterApps(0, FilterCommitKind.EXPLICIT).join()
                 // Fetch compatibility for current page after refresh
                 val currentPageGames = _state.value.appInfoList.map { it.name }
                 if (currentPageGames.isNotEmpty()) {
@@ -422,7 +494,7 @@ class LibraryViewModel @Inject constructor(
                     )
                 }
                 if (usesStats(_state.value)) {
-                    onFilterApps(paginationCurrentPage)
+                    onFilterApps(paginationCurrentPage, FilterCommitKind.STRUCTURAL)
                 }
             }
         }
@@ -444,7 +516,7 @@ class LibraryViewModel @Inject constructor(
             }
 
             CustomGameScanner.invalidateCache()
-            onFilterApps(paginationCurrentPage)
+            onFilterApps(paginationCurrentPage, FilterCommitKind.EXPLICIT)
         }
     }
 
@@ -484,10 +556,31 @@ class LibraryViewModel @Inject constructor(
         return true
     }
 
-    private fun onFilterApps(paginationPage: Int = 0): Job {
+    private fun onFilterApps(
+        paginationPage: Int = 0,
+        commitKind: FilterCommitKind = FilterCommitKind.STRUCTURAL,
+    ): Job {
         Timber.tag("LibraryViewModel").d("onFilterApps - appList.size: ${appList.size}, isFirstLoad: $isFirstLoad")
-        return viewModelScope.launch(Dispatchers.IO) {
-            _state.update { it.copy(isLoading = true) }
+        if (!loadCoordinator.isInitialSnapshotReady) {
+            return viewModelScope.launch { }
+        }
+
+        return synchronized(filterJobLock) {
+            val filterRun = loadCoordinator.beginFilterRun(commitKind)
+            filterJob?.cancel()
+            viewModelScope.launch(Dispatchers.IO) {
+            if (!loadCoordinator.runIfCurrent(filterRun) {
+                    _state.update {
+                        it.copy(
+                            isLoading = shouldShowBlockingLibraryLoading(it.initialLoadComplete),
+                        )
+                    }
+                }
+            ) {
+                return@launch
+            }
+
+            try {
 
             val currentState = _state.value
             val currentFilter = AppFilter.getAppType(currentState.appInfoSortType)
@@ -753,23 +846,13 @@ class LibraryViewModel @Inject constructor(
                     )
                 }
 
+            coroutineContext.ensureActive()
+            if (!loadCoordinator.isCurrentFilterRun(filterRun)) return@launch
+
             // Calculate installed counts
             val gogInstalledCount = filteredGOGGames.count { it.isInstalled }
             val epicInstalledCount = filteredEpicGames.count { it.isInstalled }
             val amazonInstalledCount = filteredAmazonGames.count { it.isInstalled }
-            // Save game counts for skeleton loaders (only when not searching, to get accurate counts)
-            // This needs to happen before filtering by source, so we save the total counts
-            if (currentState.searchQuery.isEmpty()) {
-                PrefManager.customGamesCount = customGameItems.size
-                PrefManager.steamGamesCount = steamFilteredBeforeCompatibility.size
-                PrefManager.gogGamesCount = filteredGOGGames.size
-                PrefManager.gogInstalledGamesCount = gogInstalledCount
-                PrefManager.epicGamesCount = filteredEpicGames.size
-                PrefManager.epicInstalledGamesCount = epicInstalledCount
-                PrefManager.amazonInstalledGamesCount = amazonInstalledCount
-                Timber.tag("LibraryViewModel").d("Saved counts - Custom: ${customGameItems.size}, Steam: ${steamFilteredBeforeCompatibility.size}, GOG: ${filteredGOGGames.size}, GOG installed: $gogInstalledCount, Epic: ${filteredEpicGames.size}, Epic installed: $epicInstalledCount, Amazon installed: $amazonInstalledCount")
-            }
-
             // Compute effective source filters based on current tab
             // ALL tab uses user preferences, other tabs override with their presets
             // Use captured currentState (not _state.value) to avoid TOCTOU race
@@ -857,29 +940,28 @@ class LibraryViewModel @Inject constructor(
 
             // Determine how many pages and slice the list for incremental loading
             val pageSize = PrefManager.itemsPerPage
-            // Update internal pagination state
-            paginationCurrentPage = paginationPage
-            lastPageInCurrentFilter = if (totalFound == 0) 0 else (totalFound - 1) / pageSize
+            val calculatedLastPage = if (totalFound == 0) 0 else (totalFound - 1) / pageSize
             // Calculate how many items to show: (pagesLoaded * pageSize)
             val endIndex = min((paginationPage + 1) * pageSize, totalFound)
             var pagedList = combined.take(endIndex)
 
             // Prepend recommendation as first item on ALL tab when enabled and not searching
-            val rec = cachedRecommendation
-            if (rec != null
-                && PrefManager.showRecommendations
-                && currentTab == LibraryTab.ALL
-                && currentState.searchQuery.isEmpty()
-            ) {
+            val recommendation = cachedRecommendation?.takeIf {
+                PrefManager.showRecommendations &&
+                    currentTab == LibraryTab.ALL &&
+                    currentState.searchQuery.isEmpty()
+            }
+            if (recommendation != null) {
                 val recItem = LibraryItem(
                     index = -1,
-                    appId = "RECOMMENDED_${rec.id}",
-                    name = rec.name,
-                    heroImageUrl = rec.heroImageUrl,
-                    capsuleImageUrl = rec.capsuleImageUrl,
-                    iconHash = rec.iconUrl ?: rec.capsuleImageUrl,
+                    appId = "RECOMMENDED_${recommendation.id}",
+                    name = recommendation.name,
+                    heroImageUrl = recommendation.heroImageUrl,
+                    capsuleImageUrl = recommendation.capsuleImageUrl,
+                    iconHash = recommendation.iconUrl ?: recommendation.capsuleImageUrl,
                     isRecommended = true,
-                    recommendedGameId = rec.id,
+                    recommendedGameId = recommendation.id,
+                    recommendedGame = recommendation,
                     gameSource = GameSource.STEAM,
                 )
                 pagedList = listOf(recItem) + pagedList.map { it.copy(index = it.index + 1) }
@@ -892,15 +974,42 @@ class LibraryViewModel @Inject constructor(
             }
 
             // Fetch compatibility for current page games
-            fetchCompatibilityForPage(pagedList.map { it.name })
+            if (!loadCoordinator.runIfCurrent(filterRun) {
+                    fetchCompatibilityForPage(pagedList.map { it.name })
+                }
+            ) {
+                return@launch
+            }
 
-            _state.update {
-                it.copy(
-                    appInfoList = pagedList,
-                    currentPaginationPage = paginationPage + 1, // visual display is not 0 indexed
-                    lastPaginationPage = lastPageInCurrentFilter + 1,
-                    totalAppsInFilter = totalFound,
-                    isLoading = false, // Loading complete
+            coroutineContext.ensureActive()
+            loadCoordinator.commitIfCurrent(
+                run = filterRun,
+                appIdOrder = pagedList.map { it.appId },
+            ) { resetToken ->
+                paginationCurrentPage = paginationPage
+                lastPageInCurrentFilter = calculatedLastPage
+                if (currentState.searchQuery.isEmpty()) {
+                    PrefManager.customGamesCount = customGameItems.size
+                    PrefManager.steamGamesCount = steamFilteredBeforeCompatibility.size
+                    PrefManager.gogGamesCount = filteredGOGGames.size
+                    PrefManager.gogInstalledGamesCount = gogInstalledCount
+                    PrefManager.epicGamesCount = filteredEpicGames.size
+                    PrefManager.epicInstalledGamesCount = epicInstalledCount
+                    PrefManager.amazonInstalledGamesCount = amazonInstalledCount
+                    Timber.tag("LibraryViewModel").d("Saved counts - Custom: ${customGameItems.size}, Steam: ${steamFilteredBeforeCompatibility.size}, GOG: ${filteredGOGGames.size}, GOG installed: $gogInstalledCount, Epic: ${filteredEpicGames.size}, Epic installed: $epicInstalledCount, Amazon installed: $amazonInstalledCount")
+                }
+                _state.update {
+                    it.copy(
+                        appInfoList = pagedList,
+                        currentPaginationPage = paginationPage + 1, // visual display is not 0 indexed
+                        lastPaginationPage = calculatedLastPage + 1,
+                        totalAppsInFilter = displayedLibraryTotal(
+                            gameCount = totalFound,
+                            includesRecommendation = recommendation != null,
+                        ),
+                        isLoading = false,
+                        initialLoadComplete = true,
+                        viewportResetToken = resetToken ?: it.viewportResetToken,
                     // Per-source counts for tab badges
                     // Use user prefs + auth state only (not current tab) so badges stay stable across tab switches
                     allCount = (if (currentState.showSteamInLibrary) steamEntries.size else 0) +
@@ -913,8 +1022,30 @@ class LibraryViewModel @Inject constructor(
                     epicCount = if (currentState.showEpicInLibrary && EpicService.hasStoredCredentials(context)) epicEntries.size else 0,
                     amazonCount = if (currentState.showAmazonInLibrary && AmazonService.hasStoredCredentials(context)) amazonEntries.size else 0,
                     localCount = if (currentState.showCustomGamesInLibrary) customEntries.size else 0,
-                )
+                    )
+                }
             }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Timber.tag("LibraryViewModel").e(error, "Filtering the library failed")
+                loadCoordinator.runIfCurrent(filterRun) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            initialLoadComplete = true,
+                        )
+                    }
+                }
+                loadCoordinator.failRun(filterRun)
+            } finally {
+                loadCoordinator.runIfCurrent(filterRun) {
+                    if (_state.value.isLoading) {
+                        _state.update { it.copy(isLoading = false) }
+                    }
+                }
+            }
+            }.also { filterJob = it }
         }
     }
 
@@ -997,7 +1128,7 @@ class LibraryViewModel @Inject constructor(
                     updateCompatibilityState(fetchedResults)
                     // Re-apply list filtering once new compatibility data is available
                     if (_state.value.appInfoSortType.contains(AppFilter.COMPATIBLE)) {
-                        onFilterApps(paginationCurrentPage)
+                        onFilterApps(paginationCurrentPage, FilterCommitKind.STRUCTURAL)
                     }
                 }
             } catch (e: Exception) {

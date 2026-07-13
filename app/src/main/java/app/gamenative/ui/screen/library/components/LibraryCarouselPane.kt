@@ -89,6 +89,12 @@ private const val CAROUSEL_BADGE_RESERVED_HEIGHT = 0f
 private const val CAROUSEL_MOUSE_WHEEL_SCROLL_MULTIPLIER = 72f
 private const val CAROUSEL_MOUSE_DRAG_SLOP_PX = 8f
 
+internal fun backdropAfterViewportReset(
+    completedResetToken: Long,
+    items: List<LibraryItem>,
+    currentBackdrop: LibraryItem?,
+): LibraryItem? = if (completedResetToken == 0L) currentBackdrop else items.firstOrNull()
+
 
 private fun Modifier.carouselMouseInput(listState: LazyListState): Modifier =
     pointerInput(listState) {
@@ -211,6 +217,7 @@ internal fun LibraryCarouselPane(
     firstCarouselItemFocusRequester: FocusRequester? = null,
     focusTargetListIndex: Int? = null,
     onFocusedIndexChanged: (Int) -> Unit = {},
+    completedViewportResetToken: Long = 0L,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val pullToRefreshState = rememberPullToRefreshState()
@@ -306,14 +313,24 @@ internal fun LibraryCarouselPane(
     }
 
     var settledBackdropItem by remember { mutableStateOf<LibraryItem?>(null) }
+    var pendingBackdropUpdate by remember { mutableStateOf<Job?>(null) }
     val currentAppInfoList by rememberUpdatedState(state.appInfoList)
+    LaunchedEffect(completedViewportResetToken) {
+        if (completedViewportResetToken != 0L) {
+            pendingBackdropUpdate?.cancel()
+            settledBackdropItem = backdropAfterViewportReset(
+                completedResetToken = completedViewportResetToken,
+                items = currentAppInfoList,
+                currentBackdrop = settledBackdropItem,
+            )
+        }
+    }
     LaunchedEffect(listState) {
-        var pendingUpdate: Job? = null
         snapshotFlow { listState.isScrollInProgress to centeredIndex }
             .collect { (isScrolling, _) ->
-                pendingUpdate?.cancel()
+                pendingBackdropUpdate?.cancel()
                 if (!isScrolling) {
-                    pendingUpdate = launch {
+                    pendingBackdropUpdate = launch {
                         delay(200)
                         val list = currentAppInfoList
                         val idx = centeredIndex.takeIf { it in list.indices }

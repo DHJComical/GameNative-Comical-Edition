@@ -1,10 +1,11 @@
 package app.gamenative.data
 
-import android.content.Context
 import app.gamenative.PrefManager
 import app.gamenative.utils.Net
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -14,30 +15,48 @@ import timber.log.Timber
 object RecommendationRepository {
 
     private const val API_URL = "https://api.gamenative.app/api/games/recommendation"
-    private const val CACHE_TTL_MS = 24L * 60L * 60L * 1000L
+    internal const val CACHE_TTL_MS = 24L * 60L * 60L * 1000L
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun getCurrentRecommendation(context: Context): RecommendedGame? =
-        withContext(Dispatchers.IO) {
-            val cached = loadCached()
-            val cacheAgeMs = System.currentTimeMillis() - PrefManager.recommendationCacheTimestamp
-            val cacheFresh = cached != null && cacheAgeMs in 0..CACHE_TTL_MS
+    /**
+     * Captures the recommendation for the current library session without performing I/O that can
+     * reorder the library after it becomes visible.
+     */
+    fun getCachedRecommendation(): RecommendedGame? {
+        val cached = PrefManager.recommendationCacheJson
+        if (cached.isEmpty()) return null
 
-            if (cacheFresh) {
-                return@withContext cached
-            }
-
-            val fetched = fetchRemote()
-            if (fetched != null) {
-                return@withContext fetched
-            }
-
-            cached ?: loadBundledFallback(context)
-        }
-
-    private fun fetchRemote(): RecommendedGame? {
         return try {
+            parseRecommendation(cached)
+        } catch (e: SerializationException) {
+            Timber.tag("RecommendationRepo").e(e, "Failed to parse cached recommendation")
+            null
+        } catch (e: IllegalArgumentException) {
+            Timber.tag("RecommendationRepo").e(e, "Invalid cached recommendation")
+            null
+        }
+    }
+
+    /**
+     * Refreshes an expired recommendation cache for a future library session. The fetched value is
+     * deliberately not returned so callers cannot replace the current session's stable snapshot.
+     */
+    suspend fun refreshCacheIfStale(nowMs: Long = System.currentTimeMillis()) {
+        val cached = getCachedRecommendation()
+        refreshRecommendationCacheIfStale(
+            cachedRecommendation = cached,
+            cacheTimestampMs = PrefManager.recommendationCacheTimestamp,
+            nowMs = nowMs,
+        ) {
+            withContext(Dispatchers.IO) {
+                fetchRemoteToCache(nowMs)
+            }
+        }
+    }
+
+    private fun fetchRemoteToCache(nowMs: Long) {
+        try {
             val mediaType = "application/json".toMediaType()
             val body = "{}".toRequestBody(mediaType)
             val request = Request.Builder()
@@ -45,32 +64,46 @@ object RecommendationRepository {
                 .post(body)
                 .header("Content-Type", "application/json")
                 .build()
+
             Net.http.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                val responseBody = response.body?.string() ?: return null
-                val game = parseRecommendation(responseBody) ?: return null
+                if (!response.isSuccessful) {
+                    Timber.tag("RecommendationRepo").w(
+                        "Recommendation refresh failed with HTTP %d",
+                        response.code,
+                    )
+                    return
+                }
+
+                val responseBody = response.body?.string()
+                if (responseBody.isNullOrBlank()) {
+                    Timber.tag("RecommendationRepo").w("Recommendation refresh returned an empty response")
+                    return
+                }
+
+                try {
+                    val recommendation = parseRecommendation(responseBody)
+                    if (recommendation == null) {
+                        Timber.tag("RecommendationRepo").w("Recommendation refresh returned an empty list")
+                        return
+                    }
+                } catch (e: SerializationException) {
+                    Timber.tag("RecommendationRepo").e(e, "Recommendation refresh returned invalid JSON")
+                    return
+                } catch (e: IllegalArgumentException) {
+                    Timber.tag("RecommendationRepo").e(e, "Recommendation refresh returned invalid data")
+                    return
+                }
+
                 PrefManager.recommendationCacheJson = responseBody
-                PrefManager.recommendationCacheTimestamp = System.currentTimeMillis()
-                game
+                PrefManager.recommendationCacheTimestamp = nowMs
             }
         } catch (e: Exception) {
-            Timber.tag("RecommendationRepo").d(e, "Remote recommendation fetch failed, will try fallback")
-            null
+            if (e is CancellationException) throw e
+            Timber.tag("RecommendationRepo").e(e, "Remote recommendation refresh failed")
         }
     }
 
-    private fun loadCached(): RecommendedGame? {
-        val cached = PrefManager.recommendationCacheJson
-        if (cached.isEmpty()) return null
-        return try {
-            parseRecommendation(cached)
-        } catch (e: Exception) {
-            Timber.tag("RecommendationRepo").d(e, "Failed to parse cached recommendation")
-            null
-        }
-    }
-
-    private fun parseRecommendation(body: String): RecommendedGame? {
+    internal fun parseRecommendation(body: String): RecommendedGame? {
         val trimmed = body.trimStart()
         return if (trimmed.startsWith("[")) {
             json.decodeFromString<List<RecommendedGame>>(body).firstOrNull()
@@ -78,15 +111,25 @@ object RecommendationRepository {
             json.decodeFromString<RecommendedGame>(body)
         }
     }
+}
 
-    private fun loadBundledFallback(context: Context): RecommendedGame? {
-        return try {
-            val body = context.assets.open("recommendations.json").bufferedReader().use { it.readText() }
-            val list = json.decodeFromString<List<RecommendedGame>>(body)
-            list.firstOrNull()
-        } catch (e: Exception) {
-            Timber.tag("RecommendationRepo").d(e, "Bundled recommendation fallback unavailable")
-            null
-        }
+internal fun shouldRefreshRecommendationCache(
+    cachedRecommendation: RecommendedGame?,
+    cacheTimestampMs: Long,
+    nowMs: Long,
+): Boolean {
+    if (cachedRecommendation == null) return true
+    val cacheAgeMs = nowMs - cacheTimestampMs
+    return cacheAgeMs !in 0..RecommendationRepository.CACHE_TTL_MS
+}
+
+internal suspend fun refreshRecommendationCacheIfStale(
+    cachedRecommendation: RecommendedGame?,
+    cacheTimestampMs: Long,
+    nowMs: Long,
+    refreshCache: suspend () -> Unit,
+) {
+    if (shouldRefreshRecommendationCache(cachedRecommendation, cacheTimestampMs, nowMs)) {
+        refreshCache()
     }
 }

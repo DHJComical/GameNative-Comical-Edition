@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
@@ -59,6 +60,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.rotary.onRotaryScrollEvent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInputModeManager
@@ -111,8 +116,11 @@ import app.gamenative.service.gog.GOGService
 import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.PlatformOAuthHandlers
 import app.gamenative.utils.SteamUtils
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 import android.os.SystemClock
+
+private const val LIBRARY_ROTARY_INTERACTION_THRESHOLD_PX = 0.5f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,6 +164,9 @@ fun HomeLibraryScreen(
         onTabChanged = viewModel::onTabChanged,
         onPreviousTab = viewModel::onPreviousTab,
         onNextTab = viewModel::onNextTab,
+        onLibraryUserInteraction = viewModel::onLibraryUserInteraction,
+        isViewportResetPending = viewModel::isViewportResetPending,
+        consumeViewportReset = viewModel::consumeViewportReset,
         isOffline = isOffline,
     )
 }
@@ -167,6 +178,92 @@ private fun isGameControllerConnected(): Boolean =
         sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
             sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
     }
+
+internal fun Modifier.notifyLibraryPointerInteraction(
+    onLibraryUserInteraction: () -> Unit,
+): Modifier = pointerInput(onLibraryUserInteraction) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (event.type == PointerEventType.Press || event.type == PointerEventType.Scroll) {
+                onLibraryUserInteraction()
+            }
+        }
+    }
+}.onRotaryScrollEvent {
+    if (isLibraryRotaryMotion(it.verticalScrollPixels, it.horizontalScrollPixels)) {
+        onLibraryUserInteraction()
+    }
+    false
+}
+
+internal fun isLibraryKeyDown(action: Int): Boolean = action == KeyEvent.ACTION_DOWN
+
+internal fun reportLibraryInteractionIfReady(
+    initialLoadComplete: Boolean,
+    onLibraryUserInteraction: () -> Unit,
+): Boolean {
+    if (!initialLoadComplete) return false
+    onLibraryUserInteraction()
+    return true
+}
+
+internal fun isLibraryRotaryMotion(verticalPixels: Float, horizontalPixels: Float): Boolean =
+    abs(verticalPixels) >= LIBRARY_ROTARY_INTERACTION_THRESHOLD_PX ||
+        abs(horizontalPixels) >= LIBRARY_ROTARY_INTERACTION_THRESHOLD_PX
+
+internal fun isLibraryGlobalControllerKey(action: Int, keyCode: Int): Boolean =
+    isLibraryKeyDown(action) && when (keyCode) {
+        KeyEvent.KEYCODE_BUTTON_L1,
+        KeyEvent.KEYCODE_BUTTON_R1,
+        KeyEvent.KEYCODE_BUTTON_A,
+        KeyEvent.KEYCODE_BUTTON_B,
+        KeyEvent.KEYCODE_BUTTON_X,
+        KeyEvent.KEYCODE_BUTTON_Y,
+        KeyEvent.KEYCODE_BUTTON_START,
+        KeyEvent.KEYCODE_BUTTON_SELECT,
+        KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_MENU,
+        KeyEvent.KEYCODE_DPAD_UP,
+        KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_DPAD_LEFT,
+        KeyEvent.KEYCODE_DPAD_RIGHT,
+        KeyEvent.KEYCODE_BUTTON_L2,
+        KeyEvent.KEYCODE_BUTTON_R2,
+        KeyEvent.KEYCODE_BUTTON_THUMBL,
+        KeyEvent.KEYCODE_BUTTON_THUMBR,
+        -> true
+
+        else -> false
+    }
+
+internal fun isLibraryDirectionalMotion(
+    actionMasked: Int,
+    hatX: Float,
+    hatY: Float,
+    leftX: Float,
+    leftY: Float,
+): Boolean = actionMasked == MotionEvent.ACTION_MOVE && (
+    abs(hatX) >= 0.5f ||
+        abs(hatY) >= 0.5f ||
+        abs(leftX) >= 0.6f ||
+        abs(leftY) >= 0.6f
+    )
+
+internal fun resetLibraryViewport(
+    token: Long,
+    isViewportResetPending: (Long) -> Boolean,
+    resetFocusTargets: () -> Unit,
+    requestGridAtTop: () -> Unit,
+    requestCarouselAtTop: () -> Unit,
+    consumeViewportReset: (Long) -> Boolean,
+): Boolean {
+    if (token == 0L || !isViewportResetPending(token)) return false
+    resetFocusTargets()
+    requestGridAtTop()
+    requestCarouselAtTop()
+    return consumeViewportReset(token)
+}
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -195,6 +292,9 @@ private fun LibraryScreenContent(
     onTabChanged: (LibraryTab) -> Unit,
     onPreviousTab: () -> Unit,
     onNextTab: () -> Unit,
+    onLibraryUserInteraction: () -> Unit,
+    isViewportResetPending: (Long) -> Boolean,
+    consumeViewportReset: (Long) -> Boolean,
     isOffline: Boolean = false,
 ) {
     val context = LocalContext.current
@@ -353,6 +453,19 @@ private fun LibraryScreenContent(
     // buttons would otherwise light up for ~100ms and then lose focus).
     var tabBarHasFocus by remember { mutableStateOf(false) }
     var lastBootstrapAtMs by remember { mutableLongStateOf(0L) }
+    var completedViewportResetToken by remember { mutableLongStateOf(0L) }
+
+    fun resetContentFocusTargets() {
+        gridFocusTargetListIndex = 0
+        carouselFocusTargetListIndex = 0
+    }
+
+    fun selectTab(tab: LibraryTab) {
+        if (tab != state.currentTab) {
+            onLibraryUserInteraction()
+            onTabChanged(tab)
+        }
+    }
 
     fun firstVisibleContentIndex(): Int {
         val lastIndex = state.appInfoList.lastIndex
@@ -422,6 +535,23 @@ private fun LibraryScreenContent(
         try {
             rootFocusRequester.requestFocus()
         } catch (_: IllegalStateException) {}
+    }
+
+    LaunchedEffect(state.viewportResetToken) {
+        val token = state.viewportResetToken
+        if (token != 0L) {
+            val consumed = resetLibraryViewport(
+                token = token,
+                isViewportResetPending = isViewportResetPending,
+                resetFocusTargets = ::resetContentFocusTargets,
+                requestGridAtTop = { listState.requestScrollToItem(0) },
+                requestCarouselAtTop = { carouselListState.requestScrollToItem(0) },
+                consumeViewportReset = consumeViewportReset,
+            )
+            if (consumed) {
+                completedViewportResetToken = token
+            }
+        }
     }
 
     val storagePermissionLauncher = rememberLauncherForActivityResult(
@@ -659,18 +789,27 @@ private fun LibraryScreenContent(
             !state.isSearching &&
             !rootHasFocus
     }
+    val latestInitialLoadComplete by rememberUpdatedState(state.initialLoadComplete)
+    val latestCanBootstrapContentFocus by rememberUpdatedState(canBootstrapContentFocus)
+    val latestCanNavigateTabsWithoutFocus by rememberUpdatedState(canNavigateTabsWithoutFocus)
+    val latestOnLibraryUserInteraction by rememberUpdatedState(onLibraryUserInteraction)
+    val latestOnPreviousTab by rememberUpdatedState(onPreviousTab)
+    val latestOnNextTab by rememberUpdatedState(onNextTab)
+    val latestRequestRootFocus by rememberUpdatedState { requestRootFocusSafe() }
+    val latestRequestContentFocus by rememberUpdatedState { requestContentFocusOrDefer() }
 
     DisposableEffect(Unit) {
         val onGlobalKeyEvent: (AndroidEvent.KeyEvent) -> Boolean = { androidEvent ->
             val event = androidEvent.event
-            if (event.action != KeyEvent.ACTION_DOWN) {
+            if (!isLibraryGlobalControllerKey(event.action, event.keyCode)) {
                 false
             } else {
+                reportLibraryInteractionIfReady(latestInitialLoadComplete, latestOnLibraryUserInteraction)
                 when (event.keyCode) {
                     KeyEvent.KEYCODE_BUTTON_L1 -> {
-                        if (canNavigateTabsWithoutFocus()) {
-                            onPreviousTab()
-                            requestRootFocusSafe()
+                        if (latestInitialLoadComplete && latestCanNavigateTabsWithoutFocus()) {
+                            latestOnPreviousTab()
+                            latestRequestRootFocus()
                             true
                         } else {
                             false
@@ -678,9 +817,9 @@ private fun LibraryScreenContent(
                     }
 
                     KeyEvent.KEYCODE_BUTTON_R1 -> {
-                        if (canNavigateTabsWithoutFocus()) {
-                            onNextTab()
-                            requestRootFocusSafe()
+                        if (latestInitialLoadComplete && latestCanNavigateTabsWithoutFocus()) {
+                            latestOnNextTab()
+                            latestRequestRootFocus()
                             true
                         } else {
                             false
@@ -696,8 +835,8 @@ private fun LibraryScreenContent(
                     KeyEvent.KEYCODE_BUTTON_THUMBL,
                     KeyEvent.KEYCODE_BUTTON_THUMBR,
                     -> {
-                        if (canBootstrapContentFocus()) {
-                            requestContentFocusOrDefer()
+                        if (latestInitialLoadComplete && latestCanBootstrapContentFocus()) {
+                            latestRequestContentFocus()
                             // Do not consume: let normal key routing continue after bootstrap.
                             false
                         } else {
@@ -712,21 +851,26 @@ private fun LibraryScreenContent(
 
         val onGlobalMotionEvent: (AndroidEvent.MotionEvent) -> Boolean = { androidEvent ->
             val event = androidEvent.event
-            if (event == null || !canBootstrapContentFocus()) {
+            if (event == null) {
                 false
             } else {
-                val isMoveLike = event.actionMasked == MotionEvent.ACTION_MOVE
                 val hatX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
                 val hatY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
                 val leftX = event.getAxisValue(MotionEvent.AXIS_X)
                 val leftY = event.getAxisValue(MotionEvent.AXIS_Y)
-                val hasDirectionalAxis = kotlin.math.abs(hatX) >= 0.5f ||
-                    kotlin.math.abs(hatY) >= 0.5f ||
-                    kotlin.math.abs(leftX) >= 0.6f ||
-                    kotlin.math.abs(leftY) >= 0.6f
+                val isDirectionalMotion = isLibraryDirectionalMotion(
+                    actionMasked = event.actionMasked,
+                    hatX = hatX,
+                    hatY = hatY,
+                    leftX = leftX,
+                    leftY = leftY,
+                )
 
-                if (isMoveLike && hasDirectionalAxis) {
-                    requestContentFocusOrDefer()
+                if (isDirectionalMotion) {
+                    reportLibraryInteractionIfReady(latestInitialLoadComplete, latestOnLibraryUserInteraction)
+                    if (latestInitialLoadComplete && latestCanBootstrapContentFocus()) {
+                        latestRequestContentFocus()
+                    }
                     // Do not consume: allow normal movement handling after bootstrap.
                     false
                 } else {
@@ -760,10 +904,14 @@ private fun LibraryScreenContent(
                 }
             }
             .focusGroup()
+            .notifyLibraryPointerInteraction {
+                reportLibraryInteractionIfReady(state.initialLoadComplete, onLibraryUserInteraction)
+            }
             .onPreviewKeyEvent { keyEvent ->
                 // TODO: consider abstracting this
                 // Handle gamepad buttons
-                if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                if (state.initialLoadComplete && isLibraryKeyDown(keyEvent.nativeKeyEvent.action)) {
+                    onLibraryUserInteraction()
                     val keyCode = keyEvent.nativeKeyEvent.keyCode
                     val canBootstrapContentFocus = selectedAppId == null &&
                         !state.isOptionsPanelOpen &&
@@ -946,14 +1094,19 @@ private fun LibraryScreenContent(
                             listState = carouselListState,
                             onPageChange = onPageChange,
                             onNavigate = { appId ->
+                                onLibraryUserInteraction()
                                 selectedAppId = appId
                                 selectedLibraryItem = state.appInfoList.find { it.appId == appId }
                             },
-                            onRefresh = onRefresh,
+                            onRefresh = {
+                                onLibraryUserInteraction()
+                                onRefresh()
+                            },
                             modifier = Modifier.fillMaxSize(),
                             firstCarouselItemFocusRequester = carouselFocusRequester,
                             focusTargetListIndex = currentCarouselFocusTargetIndex(),
                             onFocusedIndexChanged = { carouselFocusTargetListIndex = it },
+                            completedViewportResetToken = completedViewportResetToken,
                         )
                     } else {
                         LibraryListPane(
@@ -964,10 +1117,14 @@ private fun LibraryScreenContent(
                             focusTargetListIndex = gridFocusTargetListIndex,
                             onPageChange = onPageChange,
                             onNavigate = { appId ->
+                                onLibraryUserInteraction()
                                 selectedAppId = appId
                                 selectedLibraryItem = state.appInfoList.find { it.appId == appId }
                             },
-                            onRefresh = onRefresh,
+                            onRefresh = {
+                                onLibraryUserInteraction()
+                                onRefresh()
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1007,11 +1164,23 @@ private fun LibraryScreenContent(
                             LibraryTab.AMAZON to state.amazonCount,
                             LibraryTab.LOCAL to state.localCount,
                         ),
-                        onTabSelected = onTabChanged,
-                        onOptionsClick = { onOptionsPanelToggle(true) },
-                        onSearchClick = { onIsSearching(true) },
-                        onAddGameClick = onAddCustomGameClick,
-                        onMenuClick = { isSystemMenuOpen = true },
+                        onTabSelected = ::selectTab,
+                        onOptionsClick = {
+                            onLibraryUserInteraction()
+                            onOptionsPanelToggle(true)
+                        },
+                        onSearchClick = {
+                            onLibraryUserInteraction()
+                            onIsSearching(true)
+                        },
+                        onAddGameClick = {
+                            onLibraryUserInteraction()
+                            onAddCustomGameClick()
+                        },
+                        onMenuClick = {
+                            onLibraryUserInteraction()
+                            isSystemMenuOpen = true
+                        },
                         onNavigateDownToGrid = {
                             if (state.appInfoList.isNotEmpty()) {
                                 requestContentFocusOrDefer()
@@ -1032,8 +1201,8 @@ private fun LibraryScreenContent(
                                 }
                             },
                     )
+                    }
                 }
-            }
         } else {
             LibraryDetailPane(
                 libraryItem = selectedLibraryItem,
@@ -1094,7 +1263,10 @@ private fun LibraryScreenContent(
                     GamepadAction(
                         button = GamepadButton.Y,
                         labelResId = R.string.search,
-                        onClick = { onIsSearching(true) },
+                        onClick = {
+                            onLibraryUserInteraction()
+                            onIsSearching(true)
+                        },
                     ),
                 ) + if (!BuildConfig.MODERN_ANDROID) {
                     listOf(
@@ -1122,9 +1294,17 @@ private fun LibraryScreenContent(
                 isOpen = state.isOptionsPanelOpen,
                 onDismiss = { onOptionsPanelToggle(false) },
                 selectedFilters = state.appInfoSortType,
-                onFilterChanged = onFilterChanged,
+                onFilterChanged = { filter ->
+                    onLibraryUserInteraction()
+                    onFilterChanged(filter)
+                },
                 currentSortOption = state.currentSortOption,
-                onSortOptionChanged = onSortOptionChanged,
+                onSortOptionChanged = { sortOption ->
+                    if (sortOption != state.currentSortOption) {
+                        onLibraryUserInteraction()
+                        onSortOptionChanged(sortOption)
+                    }
+                },
                 currentView = currentPaneType,
                 onViewChanged = { newPaneType ->
                     PrefManager.libraryLayout = newPaneType
@@ -1257,6 +1437,7 @@ private fun Preview_LibraryScreenContent() {
     var state by remember {
         mutableStateOf(
             LibraryState(
+                initialLoadComplete = true,
                 appInfoList = List(15) { idx ->
                     val item = fakeAppInfo(idx)
                     LibraryItem(
@@ -1308,6 +1489,9 @@ private fun Preview_LibraryScreenContent() {
             },
             onPreviousTab = {},
             onNextTab = {},
+            onLibraryUserInteraction = {},
+            isViewportResetPending = { false },
+            consumeViewportReset = { false },
         )
     }
 }

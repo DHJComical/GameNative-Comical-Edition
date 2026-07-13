@@ -1,8 +1,22 @@
 package app.gamenative.ui.screen.library.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -15,9 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import app.gamenative.ui.enums.PaneType
 
-/**
- * Skeleton loader for game items that matches the actual game item appearance
- */
+/** Skeleton loader matching the active library item layout. */
 @Composable
 fun GameSkeletonLoader(
     modifier: Modifier = Modifier,
@@ -29,11 +41,10 @@ fun GameSkeletonLoader(
         targetValue = 0.25f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "alpha"
+        label = "alpha",
     )
-
     val skeletonColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha)
 
     Card(
@@ -42,94 +53,76 @@ fun GameSkeletonLoader(
             .padding(vertical = 8.dp),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         ),
     ) {
-        val outerPadding = if (paneType == PaneType.LIST) {
-            16.dp
-        } else {
-            0.dp
-        }
-
+        val outerPadding = if (paneType == PaneType.LIST) 16.dp else 0.dp
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(outerPadding),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             when (paneType) {
                 PaneType.LIST -> {
-                    // List view: icon + text + button
                     Box(
                         modifier = Modifier
                             .size(56.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(skeletonColor)
+                            .background(skeletonColor),
                     )
-                    
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        // Title
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.7f)
                                 .height(20.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(skeletonColor)
+                                .background(skeletonColor),
                         )
-                        // Status line
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(0.5f)
                                 .height(16.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(skeletonColor)
+                                .background(skeletonColor),
                         )
                     }
-                    
-                    // Button skeleton
                     Box(
                         modifier = Modifier
                             .width(80.dp)
                             .height(40.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(skeletonColor)
+                            .background(skeletonColor),
                     )
                 }
-                PaneType.GRID_CAPSULE -> {
-                    // Capsule view: vertical image (2:3 aspect ratio)
-                    Box(
-                        modifier = Modifier
-                            .aspectRatio(2f / 3f)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(skeletonColor)
-                    )
-                }
-                PaneType.GRID_HERO -> {
-                    // Hero view: horizontal image (460:215 aspect ratio)
-                    Box(
-                        modifier = Modifier
-                            .aspectRatio(460f / 215f)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(skeletonColor)
-                    )
-                }
-                else -> {
-                    // Default to list view
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(skeletonColor)
-                    )
-                }
+
+                PaneType.GRID_CAPSULE -> Box(
+                    modifier = Modifier
+                        .aspectRatio(2f / 3f)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(skeletonColor),
+                )
+
+                PaneType.GRID_HERO -> Box(
+                    modifier = Modifier
+                        .aspectRatio(460f / 215f)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(skeletonColor),
+                )
+
+                else -> Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(skeletonColor),
+                )
             }
         }
     }
 }
-

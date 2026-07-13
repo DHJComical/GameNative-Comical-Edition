@@ -35,6 +35,12 @@ data class LibraryState(
     // Loading state for skeleton loaders
     val isLoading: Boolean = false,
 
+    // True after the first complete local-data snapshot has been published.
+    val initialLoadComplete: Boolean = false,
+
+    // Non-zero when a successfully published user-visible dataset should reset its viewport.
+    val viewportResetToken: Long = 0L,
+
     // Refresh counter that increments when custom game images are fetched
     // Used to trigger UI recomposition to show newly downloaded images
     val imageRefreshCounter: Long = 0,
