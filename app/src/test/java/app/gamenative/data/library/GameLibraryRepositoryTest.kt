@@ -112,6 +112,41 @@ class GameLibraryRepositoryTest {
     }
 
     @Test
+    fun legacySteamCommonPreferenceNormalizesOnceBeforePersistingV2() = runBlocking {
+        val actualRoot = File(root, "legacy-normalized").apply { mkdirs() }
+        val wrongRoot = File(actualRoot, "steamapps/common")
+        File(wrongRoot, "Existing Game").apply {
+            mkdirs()
+            resolve(".download_complete").createNewFile()
+        }
+        var resolverCalls = 0
+        val resolver = object : GameLibraryRootResolver {
+            private val delegate = GameLibraryRootResolverImpl()
+
+            override fun resolve(source: GameSource, selectedPath: String): String {
+                resolverCalls++
+                return delegate.resolve(source, selectedPath)
+            }
+        }
+        val repository = repository(
+            storage = FakeStorage(
+                legacy = LegacySteamLibraryPreferences(setOf(wrongRoot.path), wrongRoot.path),
+            ),
+            rootResolver = resolver,
+        )
+
+        val migrated = repository.getSnapshot()
+        val custom = migrated.libraries.single { !it.builtIn }
+
+        assertEquals(GameLibrarySnapshot.CURRENT_VERSION, migrated.version)
+        assertEquals(actualRoot.canonicalPath, custom.rootPath)
+        assertEquals(custom.id, migrated.defaultLibraryIds.getValue(GameSource.STEAM))
+        assertEquals(1, resolverCalls)
+        repository.getSnapshot()
+        assertEquals(1, resolverCalls)
+    }
+
+    @Test
     fun missingLegacyDefaultIsRegisteredAndSetOrderDoesNotChangeIdsOrOrdering() = runBlocking {
         val firstPath = File(root, "legacy-z").path
         val secondPath = File(root, "legacy-a").path
@@ -308,6 +343,132 @@ class GameLibraryRepositoryTest {
     }
 
     @Test
+    fun addLibraryNormalizesExistingSteamLayoutBeforeAccessConflictAndPersistence() = runBlocking {
+        val selectedRoot = File(root, "normalized-steam").apply { mkdirs() }
+        val selectedCommon = File(selectedRoot, "steamapps/common")
+        File(selectedCommon, "Existing Game").apply {
+            mkdirs()
+            resolve(".download_complete").createNewFile()
+        }
+        val checkedPaths = mutableListOf<String>()
+        val repository = repository(
+            storage = FakeStorage(),
+            canAccess = { path ->
+                checkedPaths += path
+                true
+            },
+        )
+
+        val snapshot = repository.addLibrary(GameSource.STEAM, selectedCommon.path)
+        val custom = snapshot.libraries.single { !it.builtIn }
+
+        assertEquals(selectedRoot.canonicalPath, custom.rootPath)
+        assertEquals(listOf(selectedRoot.canonicalPath), checkedPaths)
+        assertEquals(selectedCommon.canonicalPath, repository.resolveInstallation(GameSource.STEAM, custom.id).installRoot)
+    }
+
+    @Test
+    fun addLibraryRejectsSelectionThatNormalizesToAnExistingRoot() = runBlocking {
+        val builtInSteam = File(builtInRoots.getValue(GameSource.STEAM))
+        val selectedCommon = File(builtInSteam, "steamapps/common")
+        File(selectedCommon, "Existing Game").apply {
+            mkdirs()
+            resolve(".download_complete").createNewFile()
+        }
+        val repository = repository(FakeStorage())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.addLibrary(GameSource.STEAM, selectedCommon.path) }
+        }
+        Unit
+    }
+
+    @Test
+    fun persistedSteamCommonRootIsRepairedWithoutAccessCheckOrIdentityChanges() = runBlocking {
+        val actualRoot = File(root, "persisted-steam").apply { mkdirs() }
+        val wrongRoot = File(actualRoot, "steamapps/common")
+        File(wrongRoot, "Existing Game").apply {
+            mkdirs()
+            resolve(".download_complete").createNewFile()
+        }
+        val baseline = repository(FakeStorage()).getSnapshot()
+        val custom = GameLibrary("persisted-id", GameSource.STEAM, wrongRoot.canonicalPath, builtIn = false)
+        val stored = baseline.copy(
+            version = 1,
+            libraries = baseline.libraries + custom,
+            defaultLibraryIds = baseline.defaultLibraryIds + (GameSource.STEAM to custom.id),
+        )
+        var resolverCalls = 0
+        val countingResolver = object : GameLibraryRootResolver {
+            private val delegate = GameLibraryRootResolverImpl()
+
+            override fun resolve(source: GameSource, selectedPath: String): String {
+                resolverCalls++
+                return delegate.resolve(source, selectedPath)
+            }
+        }
+        var accessChecks = 0
+        val repository = repository(
+            storage = FakeStorage(Json.encodeToString(stored)),
+            canAccess = {
+                accessChecks++
+                true
+            },
+            rootResolver = countingResolver,
+        )
+
+        val repaired = repository.getSnapshot()
+        val repairedCustom = repaired.libraries.single { it.id == custom.id }
+
+        assertEquals(actualRoot.canonicalPath, repairedCustom.rootPath)
+        assertEquals(custom.id, repaired.defaultLibraryIds.getValue(GameSource.STEAM))
+        assertEquals(0, accessChecks)
+        assertEquals(1, resolverCalls)
+        repository.getSnapshot()
+        assertEquals(1, resolverCalls)
+        assertEquals(wrongRoot.canonicalPath, repository.resolveInstallation(GameSource.STEAM, custom.id).installRoot)
+        assertEquals(1, accessChecks)
+    }
+
+    @Test
+    fun persistedRootRepairMarksConflictsFallsBackToBuiltInAndAllowsRemoval() = runBlocking {
+        val actualRoot = File(root, "repair-conflict").apply { mkdirs() }
+        val wrongRoot = File(actualRoot, "steamapps/common")
+        File(wrongRoot, "Existing Game").apply {
+            mkdirs()
+            resolve(".download_complete").createNewFile()
+        }
+        val nestedRoot = File(actualRoot, "other-library").canonicalPath
+        val baseline = repository(FakeStorage()).getSnapshot()
+        val stored = baseline.copy(
+            version = 1,
+            libraries = baseline.libraries + listOf(
+                GameLibrary("wrong", GameSource.STEAM, wrongRoot.canonicalPath, builtIn = false),
+                GameLibrary("nested", GameSource.GOG, nestedRoot, builtIn = false),
+            ),
+            defaultLibraryIds = baseline.defaultLibraryIds + (GameSource.STEAM to "wrong"),
+        )
+        var accessChecks = 0
+        val repository = repository(
+            storage = FakeStorage(Json.encodeToString(stored)),
+            canAccess = {
+                accessChecks++
+                true
+            },
+        )
+
+        val migrated = repository.getSnapshot()
+        val conflicts = migrated.libraries.filter(GameLibrary::requiresConflictResolution)
+        val steamBuiltIn = migrated.libraries.single { it.source == GameSource.STEAM && it.builtIn }
+
+        assertEquals(setOf("wrong", "nested"), conflicts.map(GameLibrary::id).toSet())
+        assertEquals(steamBuiltIn.id, migrated.defaultLibraryIds.getValue(GameSource.STEAM))
+        assertEquals(0, accessChecks)
+        val afterRemoval = repository.removeLibrary("nested")
+        assertFalse(afterRemoval.libraries.single { it.id == "wrong" }.requiresConflictResolution)
+    }
+
+    @Test
     fun defaultSelectionRechecksAccessAndRemovalFallsBackToBuiltIn() = runBlocking {
         var accessAllowed = true
         val repository = repository(
@@ -376,7 +537,7 @@ class GameLibraryRepositoryTest {
             )
         }
         val unsupported = GameLibrarySnapshot(
-            version = 2,
+            version = GameLibrarySnapshot.CURRENT_VERSION + 1,
             libraries = builtIns,
             defaultLibraryIds = builtIns.associate { it.source to it.id },
         )
@@ -393,6 +554,7 @@ class GameLibraryRepositoryTest {
         storage: GameLibrarySnapshotStorage,
         canAccess: (String) -> Boolean = { true },
         createId: () -> String = { "custom-id" },
+        rootResolver: GameLibraryRootResolver = GameLibraryRootResolverImpl(),
     ) = GameLibraryRepositoryImpl.forTest(
         builtInRoots = builtInRoots,
         pathAccessPolicy = object : PathAccessPolicy {
@@ -402,6 +564,7 @@ class GameLibraryRepositoryTest {
         },
         storage = storage,
         createId = createId,
+        rootResolver = rootResolver,
     )
 
     private fun assertPathEndsWith(actual: String, expected: String) {

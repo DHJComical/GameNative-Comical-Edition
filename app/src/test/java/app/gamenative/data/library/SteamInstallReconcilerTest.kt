@@ -164,6 +164,25 @@ class SteamInstallReconcilerTest {
         assertEquals(existing, database.appInfoDao().get(501))
     }
 
+    @Test
+    fun `marker install is discovered after its catalog identity arrives`() = runBlocking {
+        val library = library("late-catalog")
+        markerInstall(library, "LateCatalogDirectory")
+
+        val initial = reconciler.reconcile(listOf(library))
+        database.steamAppDao().insert(
+            SteamApp(
+                id = 601,
+                config = ConfigInfo(installDir = "LateCatalogDirectory"),
+            ),
+        )
+        val afterCatalogUpsert = reconciler.reconcile(listOf(library))
+
+        assertTrue(initial.reconciledAppIds.isEmpty())
+        assertEquals(listOf(601), afterCatalogUpsert.reconciledAppIds)
+        assertTrue(database.appInfoDao().get(601)!!.isDownloaded)
+    }
+
     private fun library(id: String): GameLibrary {
         val directory = File(root, id).apply { mkdirs() }
         return GameLibrary(id, GameSource.STEAM, directory.canonicalPath, false)

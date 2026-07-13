@@ -55,7 +55,7 @@ class InstalledLibraryStartupTest {
 
     private fun identitySource(): InstalledCatalogIdentitySource = mockk<InstalledCatalogIdentitySource>().also { source ->
         every { source.observeIdentitySignatures() } returns flowOf(
-            InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList()),
+            InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList(), emptyList()),
         )
     }
 }

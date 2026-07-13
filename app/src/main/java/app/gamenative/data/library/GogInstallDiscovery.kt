@@ -101,7 +101,9 @@ interface GogInstallDiscovery {
 }
 
 /** Filesystem-backed [GogInstallDiscovery] using structured JSON metadata parsing. */
-class GogInstallDiscoveryImpl : GogInstallDiscovery {
+class GogInstallDiscoveryImpl(
+    private val infoFileFinder: GogInfoFileFinder = GogInfoFileFinderImpl(),
+) : GogInstallDiscovery {
     override fun discover(
         libraries: Collection<GameLibrary>,
         markerCandidates: Collection<GogMarkerInstallCandidate>,
@@ -168,7 +170,7 @@ class GogInstallDiscoveryImpl : GogInstallDiscovery {
         directory: File,
         library: GameLibrary,
         issues: MutableList<GogInstallDiscoveryIssue>,
-    ): List<GogDiscoveredInstall> = findInfoFiles(directory).mapNotNull { infoFile ->
+    ): List<GogDiscoveredInstall> = infoFileFinder.find(directory).mapNotNull { infoFile ->
         val gameId = try {
             JSONObject(infoFile.readText(Charsets.UTF_8)).optString(GAME_ID_KEY).trim().takeIf(String::isNotEmpty)
                 ?: throw IllegalArgumentException("gameId is missing or blank")
@@ -178,35 +180,6 @@ class GogInstallDiscoveryImpl : GogInstallDiscovery {
         }
         gameId?.let { discoveredInstall(it, directory, library, GogInstallSource.GOG_INFO) }
     }
-
-    /** Finds root and V2 nested metadata without following links outside the game directory. */
-    private fun findInfoFiles(installDirectory: File): List<File> {
-        val root = installDirectory.canonicalFile
-        val rootPath = root.toPath()
-        val visitedDirectories = mutableSetOf<String>()
-        val infoFiles = mutableListOf<File>()
-
-        fun visit(directory: File, depth: Int) {
-            val canonicalDirectory = directory.canonicalFile
-            if (!canonicalDirectory.toPath().startsWith(rootPath)) return
-            if (!visitedDirectories.add(canonicalDirectory.path)) return
-
-            canonicalDirectory.listFiles()?.sortedBy(File::getName)?.forEach { child ->
-                val canonicalChild = child.canonicalFile
-                if (!canonicalChild.toPath().startsWith(rootPath)) return@forEach
-                when {
-                    canonicalChild.isFile && isGogInfo(canonicalChild) -> infoFiles += canonicalChild
-                    canonicalChild.isDirectory && depth < MAX_INFO_SEARCH_DEPTH -> visit(canonicalChild, depth + 1)
-                }
-            }
-        }
-
-        visit(root, 0)
-        return infoFiles.distinctBy(File::getPath).sortedBy(File::getPath)
-    }
-
-    private fun isGogInfo(file: File): Boolean =
-        file.name.startsWith(GOG_INFO_PREFIX) && file.name.endsWith(GOG_INFO_SUFFIX)
 
     private fun directChild(root: File, directoryName: String): File {
         val directory = File(root, directoryName).canonicalFile
@@ -261,9 +234,6 @@ class GogInstallDiscoveryImpl : GogInstallDiscovery {
     }
 
     private companion object {
-        const val GOG_INFO_PREFIX = "goggame-"
-        const val GOG_INFO_SUFFIX = ".info"
         const val GAME_ID_KEY = "gameId"
-        const val MAX_INFO_SEARCH_DEPTH = 3
     }
 }

@@ -37,7 +37,7 @@ class InstalledCatalogRescanTest {
     @Test
     fun `catalog identity upsert after empty baseline triggers rescan without install-state loops`() = runTest {
         val signatures = MutableSharedFlow<InstalledCatalogIdentitySignature>(replay = 1)
-        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList())
+        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList(), emptyList())
         signatures.emit(empty)
         val source = mockk<InstalledCatalogIdentitySource>()
         every { source.observeIdentitySignatures() } returns signatures
@@ -51,7 +51,7 @@ class InstalledCatalogRescanTest {
         coVerify(exactly = 1) { synchronizer.synchronizeAll() }
 
         signatures.emit(
-            empty.copy(gog = listOf(InstalledCatalogIdentity("gog-id", "game-directory"))),
+            empty.copy(steam = listOf(InstalledCatalogIdentity("10", "game-directory"))),
         )
         advanceUntilIdle()
         coVerify(exactly = 2) { synchronizer.synchronizeAll() }
@@ -61,7 +61,7 @@ class InstalledCatalogRescanTest {
     @Test
     fun `observer failure before baseline waits for recovered baseline before startup scan`() = runTest {
         val failure = IllegalStateException("identity query failed")
-        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList())
+        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList(), emptyList())
         val recovered = MutableSharedFlow<InstalledCatalogIdentitySignature>(replay = 1)
         val source = mockk<InstalledCatalogIdentitySource>()
         every { source.observeIdentitySignatures() } returnsMany listOf(flow { throw failure }, recovered)
@@ -99,7 +99,7 @@ class InstalledCatalogRescanTest {
     @Test
     fun `observer failure after baseline and identity change is consumed without repeating startup scan`() = runTest {
         val failure = IllegalArgumentException("identity mapper failed")
-        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList())
+        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList(), emptyList())
         val changed = empty.copy(epic = listOf(InstalledCatalogIdentity("catalog", "app")))
         val recovered = MutableSharedFlow<InstalledCatalogIdentitySignature>(replay = 1)
         recovered.emit(changed)
@@ -138,7 +138,7 @@ class InstalledCatalogRescanTest {
 
     @Test
     fun `observer completion before baseline retries before startup scan and resumes identity changes`() = runTest {
-        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList())
+        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList(), emptyList())
         val recovered = MutableSharedFlow<InstalledCatalogIdentitySignature>(replay = 1)
         val source = mockk<InstalledCatalogIdentitySource>()
         every { source.observeIdentitySignatures() } returnsMany listOf(emptyFlow(), recovered)
@@ -235,7 +235,7 @@ class InstalledCatalogRescanTest {
     @Test
     fun `startup synchronization cancellation cancels observer without leaking collection`() = runTest {
         val cancellation = CancellationException("startup cancelled")
-        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList())
+        val empty = InstalledCatalogIdentitySignature(emptyList(), emptyList(), emptyList(), emptyList())
         val observerCompletion = CompletableDeferred<Throwable?>()
         val source = mockk<InstalledCatalogIdentitySource>()
         every { source.observeIdentitySignatures() } returns flow {

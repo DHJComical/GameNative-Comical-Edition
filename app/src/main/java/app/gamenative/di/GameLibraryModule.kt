@@ -16,6 +16,10 @@ import app.gamenative.data.library.GameLibraryOperations
 import app.gamenative.data.library.GameLibraryOperationsImpl
 import app.gamenative.data.library.GameLibraryRepository
 import app.gamenative.data.library.GameLibraryRepositoryImpl
+import app.gamenative.data.library.GameLibraryRootResolver
+import app.gamenative.data.library.GameLibraryRootResolverImpl
+import app.gamenative.data.library.GogInfoFileFinder
+import app.gamenative.data.library.GogInfoFileFinderImpl
 import app.gamenative.data.library.GogInstallDiscovery
 import app.gamenative.data.library.GogInstallDiscoveryImpl
 import app.gamenative.data.library.GogInstallReconciler
@@ -51,6 +55,7 @@ object GameLibraryModule {
     @Singleton
     fun provideInstalledCatalogIdentitySource(database: PluviaDatabase): InstalledCatalogIdentitySource =
         InstalledCatalogIdentitySourceImpl(
+            database.steamAppDao(),
             database.gogGameDao(),
             database.epicGameDao(),
             database.amazonGameDao(),
@@ -72,7 +77,13 @@ object GameLibraryModule {
     /** Supplies the structured GOG filesystem scanner. */
     @Provides
     @Singleton
-    fun provideGogInstallDiscovery(): GogInstallDiscovery = GogInstallDiscoveryImpl()
+    fun provideGogInstallDiscovery(infoFileFinder: GogInfoFileFinder): GogInstallDiscovery =
+        GogInstallDiscoveryImpl(infoFileFinder)
+
+    /** Shares bounded GOG info lookup across discovery and library-root resolution. */
+    @Provides
+    @Singleton
+    fun provideGogInfoFileFinder(): GogInfoFileFinder = GogInfoFileFinderImpl()
 
     /** Supplies positive-only GOG installation reconciliation. */
     @Provides
@@ -148,6 +159,12 @@ object GameLibraryModule {
     @Singleton
     fun provideGameLibraryOperations(implementation: GameLibraryOperationsImpl): GameLibraryOperations = implementation
 
+    /** Supplies store-aware normalization for existing-library directory selections. */
+    @Provides
+    @Singleton
+    fun provideGameLibraryRootResolver(infoFileFinder: GogInfoFileFinder): GameLibraryRootResolver =
+        GameLibraryRootResolverImpl(infoFileFinder)
+
     /**
      * Creates store-native built-in roots and checks broad filesystem access again at each
      * custom-library write boundary.
@@ -156,6 +173,7 @@ object GameLibraryModule {
     @Singleton
     fun provideGameLibraryRepository(
         @ApplicationContext context: Context,
+        rootResolver: GameLibraryRootResolver,
     ): GameLibraryRepository = GameLibraryRepositoryImpl(
         builtInRoots = mapOf(
             GameSource.STEAM to File(context.dataDir, "Steam").path,
@@ -164,5 +182,6 @@ object GameLibraryModule {
             GameSource.AMAZON to File(context.dataDir, "Amazon").path,
         ),
         pathAccessPolicy = PathAccessPolicyImpl(context),
+        rootResolver = rootResolver,
     )
 }

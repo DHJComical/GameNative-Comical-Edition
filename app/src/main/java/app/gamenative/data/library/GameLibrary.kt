@@ -54,7 +54,7 @@ data class GameLibrarySnapshot(
 ) {
     companion object {
         /** Snapshot schema understood by this build. */
-        const val CURRENT_VERSION = 1
+        const val CURRENT_VERSION = 2
     }
 }
 

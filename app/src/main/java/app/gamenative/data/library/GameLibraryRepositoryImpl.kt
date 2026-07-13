@@ -38,12 +38,14 @@ private object GameLibrarySnapshotStorageImpl : GameLibrarySnapshotStorage {
  *
  * @property builtInRoots Current application-owned root for every downloadable store.
  * @property pathAccessPolicy Platform and filesystem checks repeated at each write/install entry point.
+ * @property rootResolver Store-aware normalization for user selections containing existing games.
  * @property storage Atomic snapshot persistence boundary.
  * @property createId Stable-id source used only when registering a new custom library.
  */
 class GameLibraryRepositoryImpl private constructor(
     private val builtInRoots: Map<GameSource, String>,
     private val pathAccessPolicy: PathAccessPolicy,
+    private val rootResolver: GameLibraryRootResolver,
     private val storage: GameLibrarySnapshotStorage,
     private val createId: () -> String,
 ) : GameLibraryRepository {
@@ -51,9 +53,11 @@ class GameLibraryRepositoryImpl private constructor(
     constructor(
         builtInRoots: Map<GameSource, String>,
         pathAccessPolicy: PathAccessPolicy,
+        rootResolver: GameLibraryRootResolver,
     ) : this(
         builtInRoots,
         pathAccessPolicy,
+        rootResolver,
         GameLibrarySnapshotStorageImpl,
         { UUID.randomUUID().toString() },
     )
@@ -72,16 +76,16 @@ class GameLibraryRepositoryImpl private constructor(
 
     override suspend fun addLibrary(source: GameSource, rootPath: String): GameLibrarySnapshot {
         requireManagedSource(source)
-        val canonicalPath = canonicalLibraryPath(rootPath)
-        requireCustomPathAccess(canonicalPath)
+        val resolvedRoot = rootResolver.resolve(source, rootPath)
+        requireCustomPathAccess(resolvedRoot)
         return updateSnapshot { snapshot ->
-            require(snapshot.libraries.none { libraryPathsConflict(it.rootPath, canonicalPath) }) {
-                "Library path conflicts with an existing library: $canonicalPath"
+            require(snapshot.libraries.none { libraryPathsConflict(it.rootPath, resolvedRoot) }) {
+                "Library path conflicts with an existing library: $resolvedRoot"
             }
             val library = GameLibrary(
                 id = createId(),
                 source = source,
-                rootPath = canonicalPath,
+                rootPath = resolvedRoot,
                 builtIn = false,
             )
             snapshot.copy(
@@ -157,6 +161,45 @@ class GameLibraryRepositoryImpl private constructor(
         return decodeSnapshot(encoded)
     }
 
+    /** Repairs evidence-backed v1 custom roots without rechecking access or changing identity. */
+    private fun migrateSnapshotV1(snapshot: GameLibrarySnapshot): GameLibrarySnapshot {
+        require(snapshot.version == 1) { "Only game library snapshot v1 can be migrated" }
+        val normalizedLibraries = snapshot.libraries.map { library ->
+            if (library.builtIn) {
+                library
+            } else {
+                val resolvedRoot = rootResolver.resolve(library.source, library.rootPath)
+                if (resolvedRoot == library.rootPath) {
+                    library
+                } else {
+                    Timber.i(
+                        "Normalized persisted ${library.source} library ${library.id}: " +
+                            "${library.rootPath} -> $resolvedRoot",
+                    )
+                    library.copy(rootPath = resolvedRoot)
+                }
+            }
+        }
+        val conflictLibraries = markLegacyConflicts(normalizedLibraries)
+        val repairedDefaults = snapshot.defaultLibraryIds.toMutableMap()
+        MANAGED_GAME_SOURCES.forEach { source ->
+            val defaultId = repairedDefaults[source] ?: return@forEach
+            val defaultLibrary = conflictLibraries.singleOrNull { it.id == defaultId && it.source == source }
+            if (defaultLibrary?.requiresConflictResolution == true) {
+                val builtIn = conflictLibraries.single { it.source == source && it.builtIn }
+                repairedDefaults[source] = builtIn.id
+                Timber.w(
+                    "Migrated $source default library ${defaultLibrary.id} has a path conflict; using ${builtIn.id}",
+                )
+            }
+        }
+        return snapshot.copy(
+            version = GameLibrarySnapshot.CURRENT_VERSION,
+            libraries = conflictLibraries,
+            defaultLibraryIds = repairedDefaults,
+        ).also(::validateSnapshot)
+    }
+
     /** Converts both old Steam keys into the initial snapshot without moving filesystem data. */
     private fun migrateLegacySteamPreferences(
         legacy: LegacySteamLibraryPreferences,
@@ -191,30 +234,34 @@ class GameLibraryRepositoryImpl private constructor(
                 builtIn = false,
             )
         }
-        val libraries = markLegacyConflicts(builtIns + migratedSteamLibraries)
+        val libraries = builtIns + migratedSteamLibraries
         val defaults = builtIns.associate { it.source to it.id }.toMutableMap()
         if (defaultCanonical != null) {
             val requestedDefault = libraries.singleOrNull {
                 it.source == GameSource.STEAM &&
                     libraryPathIdentity(it.rootPath) == libraryPathIdentity(defaultCanonical)
             }
-            if (requestedDefault != null && !requestedDefault.requiresConflictResolution) {
+            if (requestedDefault != null) {
                 defaults[GameSource.STEAM] = requestedDefault.id
-            } else {
-                Timber.w(
-                    "Legacy default Steam library has a path conflict; using built-in: %s",
-                    defaultCanonical,
-                )
             }
         }
         Timber.i("Migrated ${migratedSteamLibraries.size} legacy Steam libraries without moving files")
-        return GameLibrarySnapshot(libraries = libraries, defaultLibraryIds = defaults)
+        return migrateSnapshotV1(
+            GameLibrarySnapshot(version = 1, libraries = libraries, defaultLibraryIds = defaults),
+        )
     }
 
     /** Decodes and validates persisted state before it reaches any caller. */
     private fun decodeSnapshot(json: String): GameLibrarySnapshot {
         return try {
-            Json.decodeFromString<GameLibrarySnapshot>(json).also(::validateSnapshot)
+            val snapshot = Json.decodeFromString<GameLibrarySnapshot>(json)
+            when (snapshot.version) {
+                1 -> migrateSnapshotV1(snapshot)
+                GameLibrarySnapshot.CURRENT_VERSION -> snapshot.also(::validateSnapshot)
+                else -> throw IllegalArgumentException(
+                    "Unsupported game library snapshot version: ${snapshot.version}",
+                )
+            }
         } catch (exception: Exception) {
             Timber.e(exception, "Failed to decode or validate game library snapshot")
             throw exception
@@ -334,9 +381,11 @@ class GameLibraryRepositoryImpl private constructor(
             pathAccessPolicy: PathAccessPolicy,
             storage: GameLibrarySnapshotStorage,
             createId: () -> String,
+            rootResolver: GameLibraryRootResolver = GameLibraryRootResolverImpl(),
         ): GameLibraryRepositoryImpl = GameLibraryRepositoryImpl(
             builtInRoots,
             pathAccessPolicy,
+            rootResolver,
             storage,
             createId,
         )

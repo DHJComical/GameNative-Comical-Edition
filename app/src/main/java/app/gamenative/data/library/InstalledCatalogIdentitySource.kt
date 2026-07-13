@@ -3,6 +3,8 @@ package app.gamenative.data.library
 import app.gamenative.db.dao.AmazonGameDao
 import app.gamenative.db.dao.EpicGameDao
 import app.gamenative.db.dao.GOGGameDao
+import app.gamenative.db.dao.SteamAppDao
+import app.gamenative.db.dao.SteamCatalogInstallIdentity
 import app.gamenative.service.amazon.AmazonConstants
 import app.gamenative.service.gog.GOGConstants
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +21,8 @@ data class InstalledCatalogIdentity(
 
 /** Stable identity-only snapshot for stores whose catalog enables local installation discovery. */
 data class InstalledCatalogIdentitySignature(
+    /** Steam app identifiers paired with every exact marker-directory candidate. */
+    val steam: List<InstalledCatalogIdentity>,
     /** GOG product and deterministic directory identities. */
     val gog: List<InstalledCatalogIdentity>,
     /** Epic catalog and app-name identities. */
@@ -35,16 +39,19 @@ interface InstalledCatalogIdentitySource {
 
 /** Room-backed identity source used to trigger in-process rescans after catalog upserts. */
 class InstalledCatalogIdentitySourceImpl(
+    private val steamAppDao: SteamAppDao,
     private val gogGameDao: GOGGameDao,
     private val epicGameDao: EpicGameDao,
     private val amazonGameDao: AmazonGameDao,
 ) : InstalledCatalogIdentitySource {
     override fun observeIdentitySignatures(): Flow<InstalledCatalogIdentitySignature> = combine(
+        steamAppDao.observeCatalogInstallIdentities(),
         gogGameDao.getAll(),
         epicGameDao.getAll(),
         amazonGameDao.getAll(),
-    ) { gogGames, epicGames, amazonGames ->
+    ) { steamApps, gogGames, epicGames, amazonGames ->
         InstalledCatalogIdentitySignature(
+            steam = steamApps.flatMap { app -> app.markerIdentities() }.sortedIdentities(),
             gog = gogGames.mapNotNull { game ->
                 if (game.id.isBlank() || game.title.isBlank()) {
                     Timber.e("Ignoring GOG catalog row without strict identity: id=%s", game.id)
@@ -78,5 +85,12 @@ class InstalledCatalogIdentitySourceImpl(
     }
 
     private fun List<InstalledCatalogIdentity>.sortedIdentities(): List<InstalledCatalogIdentity> =
-        sortedWith(compareBy(InstalledCatalogIdentity::catalogId, InstalledCatalogIdentity::installIdentity))
+        distinct().sortedWith(compareBy(InstalledCatalogIdentity::catalogId, InstalledCatalogIdentity::installIdentity))
+
+    /** Mirrors the exact non-blank, distinct directory candidates consumed by Steam marker discovery. */
+    private fun SteamCatalogInstallIdentity.markerIdentities(): List<InstalledCatalogIdentity> =
+        listOf(config.installDir, installDir, name)
+            .filter(String::isNotBlank)
+            .distinct()
+            .map { directoryName -> InstalledCatalogIdentity(appId.toString(), directoryName) }
 }
