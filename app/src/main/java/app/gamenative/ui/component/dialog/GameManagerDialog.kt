@@ -98,6 +98,7 @@ internal fun canEnableSteamInstall(
 fun GameManagerDialog(
     visible: Boolean,
     onGetDisplayInfo: @Composable (Context) -> GameDisplayInfo,
+    branch: String? = null,
     onInstall: (List<Int>, String) -> Unit,
     onDismissRequest: () -> Unit
 ) {
@@ -443,6 +444,15 @@ fun GameManagerDialog(
                         Column(
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            if (branch != null && branch != "public") {
+                                Text(
+                                    text = "Installing the \"$branch\" branch",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                            }
+
                             // Select All toggle
                             if (selectableAppIds.isNotEmpty()) {
                                 Row(
