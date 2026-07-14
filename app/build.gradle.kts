@@ -224,8 +224,8 @@ android {
             excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
         jniLibs {
-            // 'extractNativeLibs' was not enough to keep the jniLibs and
-            // the libs went missing after adding on-demand feature delivery
+            // Legacy JNI packaging keeps native libraries available when using
+            // on-demand feature delivery.
             useLegacyPackaging = true
         }
     }
