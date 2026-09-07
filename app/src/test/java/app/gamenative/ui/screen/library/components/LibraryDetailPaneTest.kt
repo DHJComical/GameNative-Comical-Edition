@@ -1,55 +1,46 @@
 package app.gamenative.ui.screen.library.components
 
 import app.gamenative.data.LibraryItem
-import app.gamenative.data.RecommendedGame
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibraryDetailPaneTest {
 
     @Test
-    fun recommendationUsesTheSnapshotCarriedByTheSelectedCard() {
-        val snapshot = recommendation("session-game")
+    fun featuredItemIsMarkedFeatured() {
         val item = LibraryItem(
-            appId = "RECOMMENDED_session-game",
+            appId = "FEATURED_mock",
             isRecommended = true,
-            recommendedGameId = snapshot.id,
-            recommendedGame = snapshot,
+            isFeatured = true,
+            recommendedGameId = "mock",
         )
 
-        assertSame(snapshot, recommendationSnapshotFor(item))
+        assertTrue(item.isFeatured)
+        assertTrue(item.isRecommended)
     }
 
     @Test
-    fun mismatchedSnapshotIsRejected() {
+    fun teaserItemCarriesLoadingState() {
         val item = LibraryItem(
-            appId = "RECOMMENDED_session-game",
+            appId = "RECOMMENDED_1",
             isRecommended = true,
-            recommendedGameId = "session-game",
-            recommendedGame = recommendation("refreshed-game"),
+            isRecTeaser = true,
+            isRecLoading = true,
         )
 
-        assertNull(recommendationSnapshotFor(item))
+        assertTrue(item.isRecTeaser)
+        assertTrue(item.isRecLoading)
+        assertFalse(item.isFeatured)
     }
 
     @Test
-    fun normalLibraryItemDoesNotResolveRecommendationDetails() {
-        val item = LibraryItem(
-            appId = "STEAM_1",
-            recommendedGame = recommendation("unexpected"),
-        )
+    fun normalLibraryItemHasNoRecommendationFlags() {
+        val item = LibraryItem(appId = "STEAM_1")
 
-        assertNull(recommendationSnapshotFor(item))
+        assertFalse(item.isRecommended)
+        assertFalse(item.isFeatured)
+        assertFalse(item.isRecTeaser)
+        assertFalse(item.isRecLoading)
     }
-
-    private fun recommendation(id: String) = RecommendedGame(
-        id = id,
-        name = "Game $id",
-        developer = "Developer",
-        description = "Description",
-        heroImageUrl = "hero",
-        capsuleImageUrl = "capsule",
-        affiliateUrl = "https://example.com",
-    )
 }

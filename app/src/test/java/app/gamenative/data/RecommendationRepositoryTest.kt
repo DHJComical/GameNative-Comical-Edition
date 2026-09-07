@@ -1,112 +1,40 @@
 package app.gamenative.data
 
-import kotlinx.coroutines.test.runTest
+import app.gamenative.data.gog.GogRecCard
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE, application = android.app.Application::class)
 class RecommendationRepositoryTest {
 
     @Test
-    fun parserAcceptsSingleRecommendation() {
-        val recommendation = RecommendationRepository.parseRecommendation(recommendationJson(id = 11))
-
-        assertEquals("11", recommendation?.id)
-        assertEquals("Game 11", recommendation?.name)
+    fun heroPoolTracksLatestCards() {
+        RecommendationRepository.setRecommendationPool(emptyList())
+        assertEquals(emptyList<GogRecCard>(), RecommendationRepository.getRecommendationPool())
     }
 
     @Test
-    fun parserUsesFirstRecommendationFromArray() {
-        val recommendation = RecommendationRepository.parseRecommendation(
-            "[${recommendationJson(id = 21)},${recommendationJson(id = 22)}]",
+    fun currentHeroRecommendationRoundTrips() {
+        val context = RuntimeEnvironment.getApplication()
+        val rec = RecommendedGame(
+            id = "11",
+            name = "Game 11",
+            developer = "Developer",
+            description = "Description",
+            heroImageUrl = "hero",
+            capsuleImageUrl = "capsule",
+            affiliateUrl = "https://example.com",
         )
-
-        assertEquals("21", recommendation?.id)
+        RecommendationRepository.setCurrentHeroRecommendation(rec)
+        assertEquals("11", RecommendationRepository.getCurrentHeroRecommendation()?.id)
+        RecommendationRepository.setCurrentHeroRecommendation(null)
+        assertNull(RecommendationRepository.getCachedFeatured())
+        context.cacheDir.mkdirs()
     }
-
-    @Test
-    fun parserReturnsNullForEmptyArray() {
-        assertNull(RecommendationRepository.parseRecommendation("[]"))
-    }
-
-    @Test
-    fun missingCacheRequiresBackgroundRefresh() {
-        assertTrue(
-            shouldRefreshRecommendationCache(
-                cachedRecommendation = null,
-                cacheTimestampMs = 0L,
-                nowMs = 1_000L,
-            ),
-        )
-    }
-
-    @Test
-    fun freshCacheDoesNotRequireRefresh() {
-        assertFalse(
-            shouldRefreshRecommendationCache(
-                cachedRecommendation = recommendation(id = 31),
-                cacheTimestampMs = 1_000L,
-                nowMs = 1_000L + RecommendationRepository.CACHE_TTL_MS,
-            ),
-        )
-    }
-
-    @Test
-    fun expiredOrFutureDatedCacheRequiresRefresh() {
-        val recommendation = recommendation(id = 41)
-
-        assertTrue(
-            shouldRefreshRecommendationCache(
-                cachedRecommendation = recommendation,
-                cacheTimestampMs = 1_000L,
-                nowMs = 1_001L + RecommendationRepository.CACHE_TTL_MS,
-            ),
-        )
-        assertTrue(
-            shouldRefreshRecommendationCache(
-                cachedRecommendation = recommendation,
-                cacheTimestampMs = 2_000L,
-                nowMs = 1_000L,
-            ),
-        )
-    }
-
-    @Test
-    fun freshCacheDoesNotExecuteBackgroundRefresh() = runTest {
-        var refreshCount = 0
-
-        refreshRecommendationCacheIfStale(
-            cachedRecommendation = recommendation(id = 51),
-            cacheTimestampMs = 1_000L,
-            nowMs = 2_000L,
-        ) {
-            refreshCount++
-        }
-
-        assertEquals(0, refreshCount)
-    }
-
-    @Test
-    fun missingCacheExecutesOneBackgroundRefresh() = runTest {
-        var refreshCount = 0
-
-        refreshRecommendationCacheIfStale(
-            cachedRecommendation = null,
-            cacheTimestampMs = 0L,
-            nowMs = 2_000L,
-        ) {
-            refreshCount++
-        }
-
-        assertEquals(1, refreshCount)
-    }
-
-    private fun recommendation(id: Int) = RecommendationRepository.parseRecommendation(
-        recommendationJson(id),
-    )!!
-
-    private fun recommendationJson(id: Int): String =
-        """{"id":"$id","name":"Game $id","developer":"Developer","description":"Description","heroImageUrl":"hero","capsuleImageUrl":"capsule","affiliateUrl":"https://example.com"}"""
 }

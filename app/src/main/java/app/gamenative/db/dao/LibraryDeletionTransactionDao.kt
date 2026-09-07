@@ -94,4 +94,23 @@ interface LibraryDeletionTransactionDao {
     /** Forgets a fully reconciled deletion. */
     @Query("DELETE FROM library_deletion_transaction WHERE transactionId = :transactionId")
     suspend fun delete(transactionId: String): Int
+
+    /** Clears installed metadata for a detached library entry without touching files. */
+    @Transaction
+    suspend fun clearDetachedMetadata(store: DownloadStore, gameKey: String, appId: Int) {
+        when (store) {
+            DownloadStore.STEAM -> {
+                deleteSteamInstall(appId)
+                deleteSteamDlcInstalls(appId)
+                deleteSteamChangeNumbers(appId)
+                deleteSteamFileChangeLists(appId)
+                deleteSteamHashCache(appId)
+                clearSteamWorkshop(appId)
+            }
+            DownloadStore.GOG -> deleteGogInstall(gameKey)
+            DownloadStore.EPIC -> deleteEpicInstall(appId)
+            DownloadStore.AMAZON -> deleteAmazonInstall(gameKey)
+        }
+        deleteTask(store, gameKey)
+    }
 }
