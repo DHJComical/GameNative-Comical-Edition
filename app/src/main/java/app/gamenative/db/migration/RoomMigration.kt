@@ -259,7 +259,7 @@ private fun migrateManagedModSourcesToV27(connection: SQLiteConnection) {
             `updated_at` INTEGER NOT NULL,
             `downloaded_at` INTEGER NOT NULL,
             `metadata_json` TEXT NOT NULL,
-            `archive_sha256` TEXT NOT NULL,
+            `archive_sha256` TEXT NOT NULL DEFAULT '',
             PRIMARY KEY(`install_id`)
         )
         """.trimIndent(),
