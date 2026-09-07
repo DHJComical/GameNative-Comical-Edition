@@ -99,6 +99,7 @@ class GameLibraryOperationsTest {
 
         assertTrue(gameDir.exists())
         assertEquals(1, repository.removeCalls)
+        assertEquals(listOf(entry), store.clearedEntries)
         assertEquals(1, store.notifications)
     }
 
@@ -111,7 +112,7 @@ class GameLibraryOperationsTest {
             operations.detachLibrary(builtIn.id)
             throw AssertionError("Built-in libraries cannot be detached")
         } catch (_: IllegalArgumentException) {
-            assertEquals(1, repository.removeCalls)
+            assertEquals(0, repository.removeCalls)
         }
     }
 
@@ -314,6 +315,7 @@ class GameLibraryOperationsTest {
         var committedTarget: GameLibraryEntryLocation? = null
         var failedDeletionKey: String? = null
         var notifications = 0
+        val clearedEntries = mutableListOf<GameLibraryEntry>()
         var pendingDeletionLibraryId: String? = null
         private val transactions = mutableMapOf<String, LibraryFileTransactionResolution>()
 
@@ -323,6 +325,9 @@ class GameLibraryOperationsTest {
         override fun createRecoveryProtocol(libraryRoot: File) = protocol(null)
         override suspend fun deleteEntry(entry: GameLibraryEntry): Result<Unit> =
             if (entry.gameKey == failedDeletionKey) Result.failure(IllegalStateException("failed")) else Result.success(Unit)
+        override suspend fun clearInstalledMetadata(entry: GameLibraryEntry) {
+            clearedEntries += entry
+        }
         override suspend fun recoverDeletions() = Unit
         override suspend fun hasPendingDeletions(libraryId: String) = pendingDeletionLibraryId == libraryId
         override fun notifyChanged(entry: GameLibraryEntry) { notifications++ }

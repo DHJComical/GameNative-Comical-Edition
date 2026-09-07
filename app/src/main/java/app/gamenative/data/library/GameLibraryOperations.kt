@@ -107,6 +107,9 @@ interface GameLibraryEntryStore {
     /** Deletes a complete install or partial using existing store/container semantics. */
     suspend fun deleteEntry(entry: GameLibraryEntry): Result<Unit>
 
+    /** Clears installed/downloaded metadata for [entry] without touching files on disk. */
+    suspend fun clearInstalledMetadata(entry: GameLibraryEntry)
+
     /** Reconciles durable deletion trash records before library operations become ready. */
     suspend fun recoverDeletions()
 
@@ -254,6 +257,7 @@ class GameLibraryOperationsImpl @Inject constructor(
                     }
                 }
                 val entries = getEntriesReady(libraryId)
+                entries.forEach { entryStore.clearInstalledMetadata(it) }
                 repository.removeLibrary(library.id)
                 entries.forEach { entryStore.notifyChanged(it) }
             }
@@ -412,6 +416,10 @@ class GameLibraryEntryStoreImpl @Inject constructor(
 
     override fun createRecoveryProtocol(libraryRoot: File): LibraryFileCommitProtocol =
         PersistentLibraryFileCommitProtocol(transactionDao, null, null, libraryRoot.canonicalFile)
+
+    override suspend fun clearInstalledMetadata(entry: GameLibraryEntry) = withContext(Dispatchers.IO) {
+        deletionDao.clearDetachedMetadata(entry.source.toDownloadStore(), entry.gameKey, entry.appId)
+    }
 
     override suspend fun deleteEntry(entry: GameLibraryEntry): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
