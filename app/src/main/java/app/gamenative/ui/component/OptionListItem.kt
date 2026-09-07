@@ -42,6 +42,7 @@ fun OptionListItem(
     icon: ImageVector? = null,
     focusRequester: FocusRequester = remember { FocusRequester() },
     showCheckmark: Boolean = true,
+    trailingText: String? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     AppMenuRow(
@@ -54,13 +55,23 @@ fun OptionListItem(
         icon = icon,
         focusRequester = focusRequester,
         interactionSource = interactionSource,
-        trailing = if (showCheckmark && selected) {
+        trailing = if ((showCheckmark && selected) || trailingText != null) {
             {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
+                if (trailingText != null) {
+                    Text(
+                        text = trailingText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = if (showCheckmark && selected) 8.dp else 0.dp),
+                    )
+                }
+                if (showCheckmark && selected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         } else {
             null

@@ -973,9 +973,14 @@ internal fun ScreenEffectAdjustmentRow(
     val isFocused by interactionSource.collectIsFocusedAsState()
     val accentColor = PluviaTheme.colors.accentPurple
     var isAdjustmentLocked by remember { mutableStateOf(false) }
+    val inputBypass = LocalImmersiveInputBypass.current
+    LaunchedEffect(isFocused, isAdjustmentLocked) {
+        inputBypass.reportAdjustment(interactionSource, if (isFocused && isAdjustmentLocked) (onDecrease to onIncrease) else null)
+    }
 
     Column(
         modifier = Modifier
+
             .fillMaxWidth(),
     ) {
         AppMenuRow(
@@ -1164,7 +1169,13 @@ internal fun ScreenEffectToggleRow(
     enabled: Boolean,
     onToggle: () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
     val accentColor = PluviaTheme.colors.accentPurple
+    val inputBypass = LocalImmersiveInputBypass.current
+    LaunchedEffect(isFocused) {
+        inputBypass.reportActivate(interactionSource, if (isFocused) onToggle else null)
+    }
 
     AppMenuRow(
         headline = title,
@@ -1192,6 +1203,11 @@ internal fun ScreenEffectRadioRow(
     focusRequester: FocusRequester? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val inputBypass = LocalImmersiveInputBypass.current
+    LaunchedEffect(isFocused) {
+        inputBypass.reportActivate(interactionSource, if (isFocused) onSelect else null)
+    }
     val accentColor = PluviaTheme.colors.accentPurple
 
     AppMenuRow(
