@@ -1862,6 +1862,7 @@
     <string name="game_libraries_no_migration_target">請先為此商店新增另一個沒有路徑衝突的遊戲庫，再遷移遊戲。</string>
     <string name="game_libraries_remove_title">移除遊戲庫</string>
     <string name="game_libraries_remove_confirm">刪除遊戲並移除遊戲庫</string>
+    <string name="game_libraries_detach_confirm">僅移除遊戲庫，保留遊戲檔案</string>
     <string name="game_libraries_remove_warning">此操作將永久刪除 %1$d 個已安裝的遊戲和 %2$d 個未完成的下載（約 %3$s），並刪除其容器及容器內儲存的所有本機存檔。只有全部內容都成功刪除後，才會移除遊戲庫登錄。</string>
     <string name="game_libraries_remove_partial_failure">部分遊戲無法刪除。此遊戲庫仍會保留登錄。</string>
     <string name="game_libraries_failed_removals">無法刪除以下項目：%1$s。此遊戲庫仍會保留登錄；請解決問題後再試一次。</string>

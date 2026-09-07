@@ -563,42 +563,41 @@ fun GameLibrariesScreen(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(
-                            R.string.game_libraries_remove_warning,
-                            request.summary.installedCount,
-                            request.summary.partialCount,
-                            StorageUtils.formatBinarySize(request.summary.totalBytes),
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(
-                        onClick = viewModel::confirmDetach,
-                        enabled = !state.activeOperation,
-                    ) {
-                        Text(stringResource(R.string.game_libraries_detach_confirm))
-                    }
-                }
+                Text(
+                    stringResource(
+                        R.string.game_libraries_remove_warning,
+                        request.summary.installedCount,
+                        request.summary.partialCount,
+                        StorageUtils.formatBinarySize(request.summary.totalBytes),
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             },
             confirmButton = {
-                Button(
-                    onClick = viewModel::confirmRemoval,
-                    enabled = !state.activeOperation,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (state.activeOperation) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Text(stringResource(R.string.game_libraries_remove_confirm))
+                    TextButton(onClick = viewModel::dismissRemoval, enabled = !state.activeOperation) {
+                        Text(stringResource(R.string.cancel))
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissRemoval, enabled = !state.activeOperation) {
-                    Text(stringResource(R.string.cancel))
+                    TextButton(onClick = viewModel::confirmDetach, enabled = !state.activeOperation) {
+                        Text(stringResource(R.string.game_libraries_detach_confirm))
+                    }
+                    Button(
+                        onClick = viewModel::confirmRemoval,
+                        enabled = !state.activeOperation,
+                    ) {
+                        if (state.activeOperation) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Text(stringResource(R.string.game_libraries_remove_confirm))
+                        }
+                    }
                 }
             },
         )

@@ -1855,6 +1855,7 @@
     <string name="game_libraries_no_migration_target">이전하기 전에 이 스토어에 충돌하지 않는 다른 라이브러리를 추가하세요.</string>
     <string name="game_libraries_remove_title">라이브러리 제거</string>
     <string name="game_libraries_remove_confirm">게임을 삭제하고 라이브러리 제거</string>
+    <string name="game_libraries_detach_confirm">게임 파일은 유지하고 라이브러리만 제거</string>
     <string name="game_libraries_remove_warning">설치된 게임 %1$d개와 완료되지 않은 다운로드 %2$d개(약 %3$s), 해당 컨테이너 및 컨테이너에 저장된 모든 로컬 저장 데이터가 영구적으로 삭제됩니다. 모든 항목이 성공적으로 삭제된 후에만 라이브러리 등록이 제거됩니다.</string>
     <string name="game_libraries_remove_partial_failure">일부 게임을 삭제하지 못했습니다. 라이브러리는 등록된 상태로 유지됩니다.</string>
     <string name="game_libraries_failed_removals">다음 항목을 제거하지 못했습니다: %1$s. 라이브러리는 등록된 상태로 유지됩니다. 문제를 해결한 후 다시 시도하세요.</string>
