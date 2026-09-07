@@ -87,6 +87,47 @@ class GameLibraryOperationsTest {
     }
 
     @Test
+    fun detachKeepsFilesAndUnregistersLibrary() = runBlocking {
+        val gameDir = File(GogLibraryLayout.installRoot(sourceLibrary.rootPath), "one").apply {
+            mkdirs()
+            resolve("game.exe").writeText("binary")
+        }
+        val entry = entry(gameDir, "one")
+        store.entries += entry
+
+        operations.detachLibrary(sourceLibrary.id)
+
+        assertTrue(gameDir.exists())
+        assertEquals(1, repository.removeCalls)
+        assertEquals(1, store.notifications)
+    }
+
+    @Test
+    fun detachRejectsBuiltInLibrary() = runBlocking {
+        val builtIn = GameLibrary("builtin", GameSource.GOG, File(root, "builtin").path, true)
+        repository.addExisting(builtIn)
+
+        try {
+            operations.detachLibrary(builtIn.id)
+            throw AssertionError("Built-in libraries cannot be detached")
+        } catch (_: IllegalArgumentException) {
+            assertEquals(1, repository.removeCalls)
+        }
+    }
+
+    @Test
+    fun detachRejectsActiveOperation() = runBlocking {
+        store.blockingReason = "active"
+
+        try {
+            operations.detachLibrary(sourceLibrary.id)
+            throw AssertionError("Active operations must reject detach")
+        } catch (_: IllegalStateException) {
+            assertEquals(0, repository.removeCalls)
+        }
+    }
+
+    @Test
     fun everyStoreAndUnifiedRuntimeBlocksLibraryMutation() {
         val activeStates = listOf(
             LibraryOperationActivity(runtimeActive = true),
