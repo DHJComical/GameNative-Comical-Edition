@@ -52,6 +52,9 @@ interface GameLibraryOperations {
     /** Deletes all games and unregisters the library only if every deletion succeeds. */
     suspend fun removeLibraryAndGames(libraryId: String): GameLibraryRemovalResult
 
+    /** Unregisters the library without touching game files on disk. */
+    suspend fun detachLibrary(libraryId: String)
+
     /** Recovers interrupted migrations under every registered library root. */
     suspend fun recoverMigrations(): LibraryFileRecovery
 }
@@ -233,6 +236,26 @@ class GameLibraryOperationsImpl @Inject constructor(
         return operationMutex.withLock {
             rootLocks.computeIfAbsent(libraryId) { Mutex() }.withLock {
                 removeLibraryAndGamesReady(libraryId)
+            }
+        }
+    }
+
+    override suspend fun detachLibrary(libraryId: String) {
+        startupReady.await()
+        operationMutex.withLock {
+            rootLocks.computeIfAbsent(libraryId) { Mutex() }.withLock {
+                val library = requireLibrary(libraryId)
+                require(!library.builtIn) { "Built-in libraries cannot be removed" }
+                entryStore.getGlobalBlockingReason()?.let { reason -> throw IllegalStateException(reason) }
+                if (entryStore.hasPendingDeletions(libraryId)) {
+                    entryStore.recoverDeletions()
+                    require(!entryStore.hasPendingDeletions(libraryId)) {
+                        "Library deletion cleanup is still pending"
+                    }
+                }
+                val entries = getEntriesReady(libraryId)
+                repository.removeLibrary(library.id)
+                entries.forEach { entryStore.notifyChanged(it) }
             }
         }
     }

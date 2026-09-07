@@ -1204,6 +1204,7 @@
     <string name="game_libraries_no_migration_target">Add another conflict-free library for this store before migrating.</string>
     <string name="game_libraries_remove_title">Remove library</string>
     <string name="game_libraries_remove_confirm">Delete games and remove library</string>
+    <string name="game_libraries_detach_confirm">Remove library only, keep game files</string>
     <string name="game_libraries_remove_warning">This permanently deletes %1$d installed games and %2$d partial downloads (about %3$s), their containers, and any local saves stored in those containers. The library registration is removed only after every deletion succeeds.</string>
     <string name="game_libraries_remove_partial_failure">Some games could not be deleted. The library remains registered.</string>
     <string name="game_libraries_failed_removals">Removal failed for: %1$s. The library remains registered; retry after resolving the problem.</string>

@@ -171,6 +171,25 @@ class GameLibrariesViewModel @Inject constructor(
         if (!mutableState.value.activeOperation) mutableState.update { it.copy(removalRequest = null) }
     }
 
+    fun confirmDetach() {
+        val request = mutableState.value.removalRequest ?: return
+        if (mutableState.value.activeOperation) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(activeOperation = true) }
+            try {
+                installedLibrarySynchronizer.withSynchronizationIdle {
+                    operations.detachLibrary(request.library.id)
+                }
+                refreshState(recover = false)
+                mutableState.update { it.copy(removalRequest = null, activeOperation = false) }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                handleOperationFailure(exception)
+            }
+        }
+    }
+
     fun confirmRemoval() {
         val request = mutableState.value.removalRequest ?: return
         if (mutableState.value.activeOperation) return
@@ -544,15 +563,23 @@ fun GameLibrariesScreen(
                 )
             },
             text = {
-                Text(
-                    stringResource(
-                        R.string.game_libraries_remove_warning,
-                        request.summary.installedCount,
-                        request.summary.partialCount,
-                        StorageUtils.formatBinarySize(request.summary.totalBytes),
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(
+                            R.string.game_libraries_remove_warning,
+                            request.summary.installedCount,
+                            request.summary.partialCount,
+                            StorageUtils.formatBinarySize(request.summary.totalBytes),
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        onClick = viewModel::confirmDetach,
+                        enabled = !state.activeOperation,
+                    ) {
+                        Text(stringResource(R.string.game_libraries_detach_confirm))
+                    }
+                }
             },
             confirmButton = {
                 Button(
