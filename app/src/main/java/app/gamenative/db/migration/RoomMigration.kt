@@ -226,6 +226,18 @@ private fun migrateNexusModSupportToV26(connection: SQLiteConnection) {
     connection.execSQL("CREATE INDEX IF NOT EXISTS `index_mod_overwrite_manifest_target_path` ON `mod_overwrite_manifest` (`target_path`)")
 }
 private fun migrateManagedModSourcesToV27(connection: SQLiteConnection) {
+    // CE v26 has no downloading_app_info table (dropped in V23->V24); v27 reintroduces it
+    // as a compatibility projection over store_download_task.
+    connection.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `downloading_app_info` (
+            `appId` INTEGER NOT NULL,
+            `dlcAppIds` TEXT NOT NULL,
+            `branch` TEXT NOT NULL DEFAULT 'public',
+            PRIMARY KEY(`appId`)
+        )
+        """.trimIndent(),
+    )
     connection.execSQL(
         """
         CREATE TABLE IF NOT EXISTS `mod_install_v27` (
