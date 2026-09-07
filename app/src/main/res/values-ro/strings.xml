@@ -1855,6 +1855,7 @@
     <string name="game_libraries_no_migration_target">Adaugă o altă bibliotecă fără conflicte pentru acest magazin înainte de migrare.</string>
     <string name="game_libraries_remove_title">Elimină biblioteca</string>
     <string name="game_libraries_remove_confirm">Șterge jocurile și elimină biblioteca</string>
+    <string name="game_libraries_detach_confirm">Elimină doar biblioteca, păstrează fișierele jocurilor</string>
     <string name="game_libraries_remove_warning">Această acțiune șterge definitiv %1$d jocuri instalate și %2$d descărcări parțiale (aproximativ %3$s), containerele lor și toate salvările locale stocate în acele containere. Înregistrarea bibliotecii este eliminată numai după ce toate ștergerile reușesc.</string>
     <string name="game_libraries_remove_partial_failure">Unele jocuri nu au putut fi șterse. Biblioteca rămâne înregistrată.</string>
     <string name="game_libraries_failed_removals">Eliminarea a eșuat pentru: %1$s. Biblioteca rămâne înregistrată; încearcă din nou după rezolvarea problemei.</string>

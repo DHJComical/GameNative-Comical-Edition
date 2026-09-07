@@ -1854,6 +1854,7 @@
     <string name="game_libraries_no_migration_target">Añade otra biblioteca sin conflictos para esta tienda antes de migrar.</string>
     <string name="game_libraries_remove_title">Eliminar biblioteca</string>
     <string name="game_libraries_remove_confirm">Eliminar juegos y biblioteca</string>
+    <string name="game_libraries_detach_confirm">Quitar solo la biblioteca, conservar los archivos del juego</string>
     <string name="game_libraries_remove_warning">Esto eliminará permanentemente %1$d juegos instalados y %2$d descargas parciales (aprox. %3$s), sus contenedores y cualquier partida local guardada en ellos. El registro de la biblioteca solo se eliminará cuando todas las eliminaciones se completen correctamente.</string>
     <string name="game_libraries_remove_partial_failure">No se pudieron eliminar algunos juegos. La biblioteca sigue registrada.</string>
     <string name="game_libraries_failed_removals">No se pudo eliminar: %1$s. La biblioteca sigue registrada; inténtalo de nuevo después de resolver el problema.</string>

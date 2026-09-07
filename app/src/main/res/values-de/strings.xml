@@ -1797,6 +1797,7 @@
     <string name="game_libraries_no_migration_target">Füge vor der Migration eine weitere konfliktfreie Bibliothek für diesen Store hinzu.</string>
     <string name="game_libraries_remove_title">Bibliothek entfernen</string>
     <string name="game_libraries_remove_confirm">Spiele löschen und Bibliothek entfernen</string>
+    <string name="game_libraries_detach_confirm">Nur Bibliothek entfernen, Spieledateien behalten</string>
     <string name="game_libraries_remove_warning">Dadurch werden %1$d installierte Spiele und %2$d unvollständige Downloads (ca. %3$s), deren Container sowie alle in diesen Containern gespeicherten lokalen Spielstände dauerhaft gelöscht. Die Registrierung der Bibliothek wird erst entfernt, wenn alle Löschvorgänge erfolgreich waren.</string>
     <string name="game_libraries_remove_partial_failure">Einige Spiele konnten nicht gelöscht werden. Die Bibliothek bleibt registriert.</string>
     <string name="game_libraries_failed_removals">Entfernen fehlgeschlagen für: %1$s. Die Bibliothek bleibt registriert; versuche es nach Behebung des Problems erneut.</string>

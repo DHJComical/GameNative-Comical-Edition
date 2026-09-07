@@ -1853,6 +1853,7 @@
     <string name="game_libraries_no_migration_target">Перед перенесенням додайте для цього магазину іншу бібліотеку без конфліктів.</string>
     <string name="game_libraries_remove_title">Видалити бібліотеку</string>
     <string name="game_libraries_remove_confirm">Видалити ігри й бібліотеку</string>
+    <string name="game_libraries_detach_confirm">Прибрати лише бібліотеку, зберегти файли ігор</string>
     <string name="game_libraries_remove_warning">Це назавжди видалить установлені ігри (%1$d), частково завантажені файли (%2$d, приблизно %3$s), їхні контейнери та всі локальні збереження в цих контейнерах. Реєстрацію бібліотеки буде видалено лише після успішного видалення всіх даних.</string>
     <string name="game_libraries_remove_partial_failure">Не вдалося видалити деякі ігри. Бібліотека залишається зареєстрованою.</string>
     <string name="game_libraries_failed_removals">Не вдалося видалити: %1$s. Бібліотека залишається зареєстрованою; усуньте проблему та повторіть спробу.</string>

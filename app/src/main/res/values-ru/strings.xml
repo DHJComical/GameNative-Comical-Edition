@@ -1731,6 +1731,7 @@ https://gamenative.app
     <string name="game_libraries_no_migration_target">Перед переносом добавьте для этого магазина другую библиотеку без конфликтов.</string>
     <string name="game_libraries_remove_title">Удалить библиотеку</string>
     <string name="game_libraries_remove_confirm">Удалить игры и библиотеку</string>
+    <string name="game_libraries_detach_confirm">Убрать только библиотеку, сохранить файлы игр</string>
     <string name="game_libraries_remove_warning">Это навсегда удалит установленные игры (%1$d), частично загруженные файлы (%2$d, около %3$s), их контейнеры и все локальные сохранения в этих контейнерах. Регистрация библиотеки будет удалена только после успешного удаления всех данных.</string>
     <string name="game_libraries_remove_partial_failure">Не удалось удалить некоторые игры. Библиотека остаётся зарегистрированной.</string>
     <string name="game_libraries_failed_removals">Не удалось удалить: %1$s. Библиотека остаётся зарегистрированной; устраните проблему и повторите попытку.</string>

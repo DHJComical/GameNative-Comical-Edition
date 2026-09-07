@@ -1831,6 +1831,7 @@
     <string name="game_libraries_no_migration_target">Tilføj et andet konfliktfrit bibliotek til denne butik før migrering.</string>
     <string name="game_libraries_remove_title">Fjern bibliotek</string>
     <string name="game_libraries_remove_confirm">Slet spil og fjern bibliotek</string>
+    <string name="game_libraries_detach_confirm">Fjern kun bibliotek, behold spilfiler</string>
     <string name="game_libraries_remove_warning">Dette sletter permanent %1$d installerede spil og %2$d delvise downloads (ca. %3$s), deres containere og eventuelle lokale gemte spil i disse containere. Bibliotekets registrering fjernes først, når alle sletninger er gennemført.</string>
     <string name="game_libraries_remove_partial_failure">Nogle spil kunne ikke slettes. Biblioteket forbliver registreret.</string>
     <string name="game_libraries_failed_removals">Fjernelse mislykkedes for: %1$s. Biblioteket forbliver registreret; prøv igen, når problemet er løst.</string>

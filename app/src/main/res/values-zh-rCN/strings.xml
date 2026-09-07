@@ -1871,6 +1871,7 @@
     <string name="game_libraries_no_migration_target">请先为此商店添加另一个不存在路径冲突的游戏库，再迁移游戏。</string>
     <string name="game_libraries_remove_title">移除游戏库</string>
     <string name="game_libraries_remove_confirm">删除游戏并移除游戏库</string>
+    <string name="game_libraries_detach_confirm">仅移除游戏库，保留游戏文件</string>
     <string name="game_libraries_remove_warning">此操作将永久删除 %1$d 个已安装游戏和 %2$d 个未完成的下载（约 %3$s），同时删除其容器以及容器内存储的所有本地存档。只有全部内容均成功删除后，才会移除游戏库登记。</string>
     <string name="game_libraries_remove_partial_failure">部分游戏无法删除。此游戏库仍将保留登记。</string>
     <string name="game_libraries_failed_removals">无法删除以下内容：%1$s。此游戏库仍将保留登记；请解决问题后重试。</string>
