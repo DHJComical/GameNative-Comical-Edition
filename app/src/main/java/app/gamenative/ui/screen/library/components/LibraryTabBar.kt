@@ -57,6 +57,7 @@ import app.gamenative.ui.util.rememberWindowWidthClass
 @Composable
 fun LibraryTabBar(
     currentTab: LibraryTab,
+    tabs: List<LibraryTab>,
     tabCounts: Map<LibraryTab, Int>,
     onTabSelected: (LibraryTab) -> Unit,
     onOptionsClick: () -> Unit,
@@ -74,6 +75,7 @@ fun LibraryTabBar(
     when (widthClass) {
         WindowWidthClass.COMPACT -> CompactLibraryTabBar(
             currentTab = currentTab,
+            tabs = tabs,
             tabCounts = tabCounts,
             onTabSelected = onTabSelected,
             onOptionsClick = onOptionsClick,
@@ -89,6 +91,7 @@ fun LibraryTabBar(
 
         else -> ExpandedLibraryTabBar(
             currentTab = currentTab,
+            tabs = tabs,
             tabCounts = tabCounts,
             onTabSelected = onTabSelected,
             onOptionsClick = onOptionsClick,
@@ -111,6 +114,7 @@ fun LibraryTabBar(
 @Composable
 private fun CompactLibraryTabBar(
     currentTab: LibraryTab,
+    tabs: List<LibraryTab>,
     tabCounts: Map<LibraryTab, Int>,
     onTabSelected: (LibraryTab) -> Unit,
     onOptionsClick: () -> Unit,
@@ -123,7 +127,6 @@ private fun CompactLibraryTabBar(
     onNextTab: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tabs = LibraryTab.visibleEntries
     val items = tabs.map { tab ->
         AppTabItem(tab, libraryTabLabel(tab, tabCounts[tab]))
     }
@@ -181,6 +184,7 @@ private fun CompactLibraryTabBar(
                 selectedKey = currentTab,
                 onTabSelected = onTabSelected,
                 modifier = Modifier
+
                     .weight(1f, fill = false),
                 density = AppTabDensity.Compact,
                 layout = AppTabLayout.Scrollable,
@@ -191,6 +195,7 @@ private fun CompactLibraryTabBar(
                 contentDescription = stringResource(R.string.search),
                 onClick = onSearchClick,
             )
+
             if (showAddGameButton && !BuildConfig.MODERN_ANDROID) {
                 CompactIconButton(
                     icon = Icons.Default.Add,
@@ -259,6 +264,7 @@ private fun CompactIconButton(
 @Composable
 private fun ExpandedLibraryTabBar(
     currentTab: LibraryTab,
+    tabs: List<LibraryTab>,
     tabCounts: Map<LibraryTab, Int>,
     onTabSelected: (LibraryTab) -> Unit,
     onOptionsClick: () -> Unit,
@@ -271,7 +277,7 @@ private fun ExpandedLibraryTabBar(
     onNextTab: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tabs = LibraryTab.visibleEntries
+
     val items = tabs.map { tab ->
         AppTabItem(tab, libraryTabLabel(tab, tabCounts[tab]))
     }
@@ -339,6 +345,7 @@ private fun ExpandedLibraryTabBar(
                 contentDescription = stringResource(R.string.search),
                 onClick = onSearchClick,
             )
+
 
             if (showAddGameButton && !BuildConfig.MODERN_ANDROID) {
                 IconActionButton(
@@ -453,6 +460,7 @@ private fun Preview_LibraryTabBar() {
         ) {
             LibraryTabBar(
                 currentTab = LibraryTab.ALL,
+                tabs = LibraryTab.visibleEntries,
                 tabCounts = mapOf(
                     LibraryTab.ALL to 42,
                     LibraryTab.STEAM to 30,
@@ -482,6 +490,7 @@ private fun Preview_LibraryTabBar_Steam() {
         ) {
             LibraryTabBar(
                 currentTab = LibraryTab.STEAM,
+                tabs = LibraryTab.visibleEntries,
                 tabCounts = mapOf(
                     LibraryTab.ALL to 42,
                     LibraryTab.STEAM to 30,

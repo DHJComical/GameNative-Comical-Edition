@@ -55,6 +55,7 @@ fun HomeScreen(
     onClickPlay: (String, Boolean) -> Unit,
     onTestGraphics: (String) -> Unit,
     onPlayWithDiagnostics: (String) -> Unit,
+    onAiDebugRun: (String) -> Unit,
     onLogout: () -> Unit,
     onNavigateRoute: (String) -> Unit,
     onGoOnline: () -> Unit,
@@ -63,6 +64,7 @@ fun HomeScreen(
     onAppTheme: (AppTheme) -> Unit,
     onPaletteStyle: (PaletteStyle) -> Unit,
     isOffline: Boolean = false,
+    isSteamConnected: Boolean = false,
 ) {
     val homeState by viewModel.homeState.collectAsStateWithLifecycle()
     var gameLibraryOperationActive by remember { mutableStateOf(false) }
@@ -86,6 +88,7 @@ fun HomeScreen(
             onClickPlay = onClickPlay,
             onTestGraphics = onTestGraphics,
             onPlayWithDiagnostics = onPlayWithDiagnostics,
+            onAiDebugRun = onAiDebugRun,
             onNavigateRoute = { route ->
                 if (route == PluviaScreen.Settings.route) {
                     viewModel.onDestination(HomeDestination.Settings)
@@ -98,6 +101,7 @@ fun HomeScreen(
             onDownloadsClick = { viewModel.onDestination(HomeDestination.Downloads) },
             onStorageClick = { viewModel.onDestination(HomeDestination.Storage) },
             isOffline = isOffline,
+            isSteamConnected = isSteamConnected,
         )
 
         AnimatedVisibility(
@@ -112,6 +116,7 @@ fun HomeScreen(
                 onClickPlay = onClickPlay,
                 onTestGraphics = onTestGraphics,
                 onPlayWithDiagnostics = onPlayWithDiagnostics,
+                onAiDebugRun = onAiDebugRun,
             )
         }
 
@@ -129,6 +134,7 @@ fun HomeScreen(
                 onTestGraphics = onTestGraphics,
                 onPlayWithDiagnostics = onPlayWithDiagnostics,
                 onGameLibrariesClick = { viewModel.onDestination(HomeDestination.GameLibraries) },
+                onAiDebugRun = onAiDebugRun,
             )
         }
 
@@ -178,6 +184,7 @@ private fun Preview_HomeScreenContent() {
             onClickPlay = { _, _ -> },
             onTestGraphics = { },
             onPlayWithDiagnostics = { },
+            onAiDebugRun = { },
             onLogout = {},
             onNavigateRoute = {},
             onClickExit = {},

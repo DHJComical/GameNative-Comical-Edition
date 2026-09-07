@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import app.gamenative.data.ChangeNumbers
 import app.gamenative.data.AppInfo
+import app.gamenative.data.DownloadingAppInfo
 import app.gamenative.data.LibraryPlayHistory
 import app.gamenative.data.FileChangeLists
 import app.gamenative.data.SteamApp
@@ -67,6 +68,7 @@ const val DATABASE_NAME = "pluvia.db"
         GOGGame::class,
         EpicGame::class,
         AmazonGame::class,
+        DownloadingAppInfo::class,
         StoreDownloadTask::class,
         LibraryFileTransactionRecord::class,
         LibraryDeletionRecord::class,
@@ -77,7 +79,7 @@ const val DATABASE_NAME = "pluvia.db"
         ModPlacementRecipe::class,
         ModOverwriteManifest::class,
     ],
-    version = 26,
+    version = 27,
     // For db migration, visit https://developer.android.com/training/data-storage/room/migrating-db-versions for more information
     exportSchema = true, // It is better to handle db changes carefully, as GN is getting much more users.
     autoMigrations = [
@@ -100,6 +102,8 @@ const val DATABASE_NAME = "pluvia.db"
         AutoMigration(from = 20, to = 21), // Added steam_file_hash_cache table
         AutoMigration(from = 21, to = 22), // Added GOG vertical_cover_url column
         AutoMigration(from = 22, to = 23), // Added local library play history table
+        // Added CE store_download_task tables in earlier CE-only versions (24-26); kept as manual migrations
+        AutoMigration(from = 26, to = 27), // Added downloading_app_info table, mod_install archive_sha256 column
     ]
 )
 @TypeConverters(

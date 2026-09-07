@@ -4,13 +4,18 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import app.gamenative.PrefManager
 import app.gamenative.data.GameSource
 import app.gamenative.data.LibraryItem
+import app.gamenative.data.RecommendationRepository
 import app.gamenative.data.RecommendedGame
+import app.gamenative.data.gog.GogRecommendationsRepository
 import app.gamenative.ui.data.LibraryState
 import app.gamenative.ui.enums.AppFilter
 import app.gamenative.ui.screen.library.AppScreen
@@ -18,12 +23,6 @@ import app.gamenative.ui.screen.library.RecommendedGameScreen
 import app.gamenative.ui.theme.PluviaTheme
 import com.posthog.PostHog
 import java.util.EnumSet
-import timber.log.Timber
-
-internal fun recommendationSnapshotFor(libraryItem: LibraryItem): RecommendedGame? =
-    libraryItem.recommendedGame?.takeIf {
-        libraryItem.isRecommended && it.id == libraryItem.recommendedGameId
-    }
 
 @Composable
 internal fun LibraryDetailPane(
@@ -31,6 +30,7 @@ internal fun LibraryDetailPane(
     onClickPlay: (Boolean) -> Unit,
     onTestGraphics: () -> Unit,
     onPlayWithDiagnostics: () -> Unit,
+    onAiDebugRun: () -> Unit,
     onBack: () -> Unit,
 ) {
     Surface {
@@ -52,28 +52,47 @@ internal fun LibraryDetailPane(
                 onRefresh = {},
             )
         } else if (libraryItem.isRecommended) {
-            val game = recommendationSnapshotFor(libraryItem)
-            if (game == null) {
-                LaunchedEffect(libraryItem.appId) {
-                    Timber.tag("LibraryDetailPane").e(
-                        "Recommendation item %s has no matching session snapshot",
-                        libraryItem.appId,
-                    )
-                    onBack()
+            val context = LocalContext.current
+            var game by remember(libraryItem.recommendedGameId) {
+                mutableStateOf<RecommendedGame?>(null)
+            }
+            LaunchedEffect(libraryItem.recommendedGameId) {
+                game = if (libraryItem.isFeatured) {
+                    RecommendationRepository.getFeaturedGame(context)
+                } else {
+                    GogRecommendationsRepository.getRecommendedGame(libraryItem.recommendedGameId)
+                        ?: RecommendationRepository.getCurrentRecommendation(context)
                 }
-            } else {
-                LaunchedEffect(game.id) {
-                    if (!PrefManager.usageAnalyticsEnabled) return@LaunchedEffect
-                    PostHog.capture(
-                        event = "recommendation_opened",
-                        properties = mapOf(
-                            "game_name" to game.name,
-                            "game_id" to game.id,
-                        ),
-                    )
+                if (game != null && PrefManager.usageAnalyticsEnabled) {
+                    if (libraryItem.isFeatured) {
+                        PostHog.capture(
+                            event = "featured_opened",
+                            properties = mapOf(
+                                "campaign_id" to (game?.id ?: ""),
+                                "game_name" to (game?.name ?: ""),
+                                "source" to libraryItem.recSource,
+                            ),
+                        )
+                    } else {
+                        PostHog.capture(
+                            event = "recommendation_opened",
+                            properties = mapOf(
+                                "game_name" to (game?.name ?: ""),
+                                "game_id" to (game?.id ?: ""),
+                                "rank" to libraryItem.index,
+                                "source" to libraryItem.recSource,
+                                "seed_count" to libraryItem.recSeedCount,
+                                "because_played" to (game?.becausePlayed ?: ""),
+                            ),
+                        )
+                    }
                 }
+            }
+            game?.let { rec ->
                 RecommendedGameScreen(
-                    game = game,
+                    game = rec,
+                    recRank = libraryItem.index,
+                    recSource = libraryItem.recSource,
                     onBack = onBack,
                 )
             }
@@ -83,6 +102,7 @@ internal fun LibraryDetailPane(
                 onClickPlay = onClickPlay,
                 onTestGraphics = onTestGraphics,
                 onPlayWithDiagnostics = onPlayWithDiagnostics,
+                onAiDebugRun = onAiDebugRun,
                 onBack = onBack,
             )
         }
@@ -109,6 +129,7 @@ private fun Preview_LibraryDetailPane() {
             onClickPlay = { },
             onTestGraphics = { },
             onPlayWithDiagnostics = { },
+            onAiDebugRun = { },
             onBack = { },
         )
     }

@@ -19,6 +19,7 @@ import app.gamenative.db.migration.ROOM_MIGRATION_V7_to_V8
 import app.gamenative.db.migration.ROOM_MIGRATION_V23_to_V24
 import app.gamenative.db.migration.ROOM_MIGRATION_V24_to_V25
 import app.gamenative.db.migration.ROOM_MIGRATION_V25_to_V26
+import app.gamenative.db.migration.ROOM_MIGRATION_V26_to_V27
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -41,6 +42,7 @@ class DatabaseModule {
                 ROOM_MIGRATION_V23_to_V24,
                 ROOM_MIGRATION_V24_to_V25,
                 ROOM_MIGRATION_V25_to_V26,
+                ROOM_MIGRATION_V26_to_V27,
             )
             .fallbackToDestructiveMigration(true)
             .build()
